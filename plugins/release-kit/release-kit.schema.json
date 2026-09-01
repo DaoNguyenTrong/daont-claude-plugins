@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/DaoNguyenTrong/daont-claude-plugins/main/plugins/release-kit/release-kit.schema.json",
+  "title": "release-kit project config",
+  "description": "Per-project bindings for the git-release skill. Lives at <repo>/.claude/release-kit.json.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["prCli", "gate", "modes"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "prCli": {
+      "description": "CLI used to open and merge the release/hotfix PR or MR.",
+      "enum": ["gh", "glab"]
+    },
+    "devBranch": {
+      "description": "Integration branch releases are cut from.",
+      "type": "string",
+      "default": "dev"
+    },
+    "mainBranch": {
+      "description": "Production branch that gets tagged.",
+      "type": "string",
+      "default": "main"
+    },
+    "versioningNote": {
+      "description": "One line describing how the version is derived (echoed in summaries). e.g. 'backend via MinVer (git tag); frontend/package.json is not touched'.",
+      "type": "string"
+    },
+    "frontendVersionFile": {
+      "description": "Path (repo-relative) to a package.json whose \"version\" field must be bumped to match the tag. null = nothing to bump (tag is the only version).",
+      "type": ["string", "null"],
+      "default": null
+    },
+    "frontendVersionBumpCmd": {
+      "description": "Optional shell command to bump the frontend version instead of a direct JSON edit. '{version}' is replaced with the numeric version (no leading 'v'). Run from the directory of frontendVersionFile. e.g. 'bun pm version {version} --no-git-tag-version'.",
+      "type": ["string", "null"],
+      "default": null
+    },
+    "gate": {
+      "description": "Verification commands. Run from repo root.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mandatory"],
+      "properties": {
+        "phase1": {
+          "description": "Fail-fast check before cutting the release branch (Standard Phase 1). Defaults to 'mandatory' if omitted.",
+          "type": "string"
+        },
+        "mandatory": {
+          "description": "The blocking gate: Standard Phase 2, Quick release, and Hotfix. A failure stops the release (no PR/MR, no merge).",
+          "type": "string"
+        }
+      }
+    },
+    "changelogPath": {
+      "description": "Repo-relative path to the changelog.",
+      "type": "string",
+      "default": "CHANGELOG.md"
+    },
+    "ciTriggerNote": {
+      "description": "One sentence describing when CI runs, shown in the Phase 2 gate section. e.g. '.github/workflows/release.yml triggers on tag push; CI runs after the tag, there is no PR CI'.",
+      "type": "string"
+    },
+    "modes": {
+      "description": "Enabled workflows. 'standard' and 'hotfix' are the usual pair; add 'quick' to allow dev -> main in one pass.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "enum": ["standard", "quick", "hotfix"] }
+    }
+  }
+}

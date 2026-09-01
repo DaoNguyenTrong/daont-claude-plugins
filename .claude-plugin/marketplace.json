@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "daont-claude-plugins",
+  "description": "DaoNguyenTrong's personal Claude Code plugins.",
+  "owner": {
+    "name": "DaoNguyenTrong",
+    "email": "hatuqs@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "release-kit",
+      "source": "./plugins/release-kit",
+      "description": "Release workflow shared across projects: git-release skill (driven by a per-project .claude/release-kit.json), plus git-commit and git-sync commands.",
+      "category": "workflow"
+    }
+  ]
+}
