@@ -49,7 +49,12 @@ Quyết định đã chốt: kiến trúc **1 skill config-driven**; repo tại
   viết lại**: cut+ship qua `/git-release`, thêm step 4 Reconcile, giữ nguyên lý luận rename-at-cut,
   đổi PR→MR / GitHub→GitLab. Lefthook (branch-guard/secretlint/commitlint) pass.
   Cũng sửa 1 staleness cũ: "create a PR to dev on GitHub" → "MR ... on GitLab".
-- [ ] **Phase 8** — dọn dẹp + migrate DAONT-BASE + xoá `~/.claude/commands/git-{commit,sync}.md`
+- [x] **Phase 8** — plugin cài **user scope** (git-release/commit/sync khắp nơi). Xoá
+  `~/.claude/commands/git-{commit,sync}.md` (nội dung đã nằm trong plugin). DAONT-BASE
+  migrate: stash WIP auth → nhánh `chore/adopt-release-kit-plugin` off `dev` commit `9ca3d4c`
+  (CHƯA push, CONTRIBUTING § Release Process viết lại + Phase 3 Reconcile) → pop stash về
+  `feature/auth-session-resilience` (WIP nguyên vẹn). PLAN.md copy vào repo plugin.
+  decisions.md: draft xong, chờ user xác nhận wording.
 
 ### Thay đổi ngoài project đã thực hiện
 - User settings: marketplace `daont-claude-plugins` → **GitHub** `DaoNguyenTrong/daont-claude-plugins`.
