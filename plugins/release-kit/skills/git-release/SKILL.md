@@ -44,7 +44,7 @@ If `gate.phase1` is absent, use `gate.mandatory` for both.
 
 - **Standard release**: `{{devBranch}} → release/vX.Y.Z → {{mainBranch}}`. Two phases, run as separate skill invocations because QA stabilization happens in between and can take any amount of time — **Cut** (finalize CHANGELOG on `{{devBranch}}`, branch off) and **Ship** (test, merge, tag).
 - **Quick release** (only if `"quick"` is in `{{modes}}`): `{{devBranch}} → {{mainBranch}}` directly, one pass, no stabilization branch. Triggered by the user passing `quick` — never inferred.
-- **Hotfix**: `{{mainBranch}} → hotfix/vX.Y.Z → {{mainBranch}}`.
+- **Hotfix**: `{{mainBranch}} → hotfix/… → {{mainBranch}}`. The branch name is cosmetic (`hotfix/vX.Y.Z` is the convention, but `hotfix/<description>` is accepted); only the git tag must be `vX.Y.Z`.
 
 After a release or hotfix ships, the user reconciles `{{devBranch}}` with `{{mainBranch}}` themselves (merge `{{mainBranch}}` into `{{devBranch}}`) — this skill does not do it. The skill only reminds them in its final summary.
 
@@ -53,9 +53,9 @@ Detect the mode/phase from the current branch and the user's words:
 - On `{{devBranch}}`, user said `quick` (and `quick` is enabled) → **Quick release**.
 - On `{{devBranch}}`, no `quick` → **Standard release, Phase 1: Cut**.
 - On `release/vX.Y.Z` → **Standard release, Phase 2: Ship**. (`quick` does not apply here — the branch already exists; point that out and ask if the user seems confused.)
-- On `hotfix/vX.Y.Z`, or on `{{mainBranch}}` with an explicit hotfix request → **Hotfix**.
+- On any `hotfix/*` branch, or an explicit hotfix request from any branch → **Hotfix**. The branch name need not carry the version — `git-commit` names it `hotfix/<description>` before the version is known — and the Hotfix workflow settles the version itself.
 - `quick` requested while not on `{{devBranch}}` → stop and ask: quick release only starts from `{{devBranch}}`.
-- Ambiguous (on `{{mainBranch}}` with no hotfix context, or an unrelated branch) → stop and ask.
+- Ambiguous (on `{{mainBranch}}` or an unrelated branch, with no hotfix request) → stop and ask.
 
 ---
 
@@ -65,6 +65,8 @@ Detect the mode/phase from the current branch and the user's words:
 - User says `major` / `minor` / `patch` → bump from the latest git tag. (Hotfix always bumps `patch`.)
 - No version given → read the latest tag, suggest the next minor (hotfix: next patch). Ask to confirm.
 - **No tags exist yet** → there is no "latest tag" to bump from. Ask the user for the starting version explicitly — do not assume `v1.0.0`.
+
+For **hotfix**, run this step from within the Hotfix workflow (step 2), *after* you are on the branch — the branch may already exist under a non-version name, and only the git tag has to be `vX.Y.Z`.
 
 ---
 
@@ -301,42 +303,62 @@ Print: version, PR/MR link, tag, commit count, `{{versioningNote}}`, and that th
 
 ---
 
-## Hotfix Workflow (`{{mainBranch}} → hotfix/vX.Y.Z → {{mainBranch}}`)
+## Hotfix Workflow (`{{mainBranch}} → hotfix/… → {{mainBranch}}`)
 
 Use when a critical bug must be fixed on production without including unreleased changes from `{{devBranch}}`.
 
-### 1. Determine version
-
-Always bump `patch` from the latest tag. User-provided version wins.
-
-### 2. Pre-flight checks
+### 1. Get onto a hotfix branch based on `{{mainBranch}}`
 
 ```bash
 git fetch origin
-git status --porcelain                    # must be clean
+git branch --show-current
+git status --porcelain
 git tag --sort=-v:refname | head -1
 ```
 
-**Stop and warn** if the working directory is dirty.
+The hotfix branch **must** be cut from `{{mainBranch}}` — a branch based on `{{devBranch}}` would drag unreleased work into production. A dirty working tree is fine at this point (the user is about to commit the fix); only warn if `git status` shows changes unrelated to the hotfix. Pick the case that matches:
 
-### 3. Create the hotfix branch from `{{mainBranch}}`
-
-```bash
-git branch --show-current
-```
-
-- **Already on `hotfix/vX.Y.Z`** → skip creation, continue to step 4.
-- **On a different `hotfix/*`** → stop and warn: another hotfix is in progress. Confirm the version.
-- **Otherwise** → create it:
+- **Already on a `hotfix/*` branch** (any name) → adopt it, then verify its base:
 
   ```bash
-  git checkout -b hotfix/vX.Y.Z origin/{{mainBranch}}
-  git push -u origin hotfix/vX.Y.Z
+  git log --oneline origin/{{mainBranch}}..HEAD
   ```
 
-**Stop here.** Ask the user to apply and commit the code fix on this branch, then confirm when ready. (Step 4's CHANGELOG update is handled by this skill once they confirm — the user only commits the code fix.)
+  - **First entry** (fix not committed yet — you are about to hit the "Stop here" handoff): expected result is **empty**. Anything non-empty → **STOP**: the branch carries commits `{{mainBranch}}` doesn't have, so it was not cut from `{{mainBranch}}`.
+  - **Re-entry** (user has committed the fix and confirmed): expected result is **only the hotfix's own fix commits**. Any other commit → **STOP**.
+  - On a STOP: the branch was cut from `{{devBranch}}` or another base; merging it to `{{mainBranch}}` ships unreleased code. Ask the user to re-cut the branch from `{{mainBranch}}` and cherry-pick the fix.
 
-### 4. Update `{{changelogPath}}` on the hotfix branch
+- **On `{{mainBranch}}`, or any other branch, with a hotfix request** → create the branch from `{{mainBranch}}`. A dirty working tree is OK here — `checkout -b` carries the uncommitted fix onto the new branch.
+
+  ```bash
+  git show-ref --verify --quiet refs/heads/hotfix/<name> && echo LOCAL-EXISTS
+  git ls-remote --exit-code --heads origin hotfix/<name> && echo REMOTE-EXISTS
+  # neither exists:
+  git checkout -b hotfix/<name> origin/{{mainBranch}}
+  git push -u origin hotfix/<name>
+  ```
+
+  - Local branch already exists → `git checkout hotfix/<name>` and run the base-verify check above.
+  - Only the remote branch exists → `git checkout -b hotfix/<name> origin/hotfix/<name>`, then confirm it is even with the remote.
+  - `<name>`: use `vX.Y.Z` if the user already gave a version; otherwise a short kebab description (matching `git-commit`'s convention). The version is settled in step 2.
+
+**Stop here.** Ask the user to apply and commit the code fix on this branch, then confirm when ready. (The CHANGELOG update in step 3 is handled by this skill once they confirm — the user only commits the code fix.)
+
+### 2. Settle the version
+
+The fix is now on the branch. Determine the version per **Determine version** above — hotfix always bumps `patch` from the latest tag; a user-provided version wins.
+
+If the branch name does not already carry it, offer to rename so the branch matches the tag:
+
+```bash
+git branch -m hotfix/vX.Y.Z
+git push -u origin hotfix/vX.Y.Z
+git push origin --delete <old-name>   # only if <old-name> was already pushed
+```
+
+Renaming is **optional** — only the git tag has to be `vX.Y.Z`. If the user keeps the descriptive name, use that name verbatim in every `git`/PR/MR command below (shown as `hotfix/vX.Y.Z` for brevity).
+
+### 3. Update `{{changelogPath}}` on the hotfix branch
 
 `[Unreleased]` on `{{devBranch}}` must NOT be touched from this branch. Insert a new release section directly above the previous release:
 
@@ -358,11 +380,11 @@ git commit -m "docs: update CHANGELOG for vX.Y.Z"
 git push origin hotfix/vX.Y.Z
 ```
 
-### 5. Bump the frontend version (only if `{{frontendVersionFile}}` is not null and the fix touches frontend)
+### 4. Bump the frontend version (only if `{{frontendVersionFile}}` is not null and the fix touches frontend)
 
 As in Phase 2, step 4, committed on the hotfix branch.
 
-### 6. Run the gate — mandatory
+### 5. Run the gate — mandatory
 
 ```bash
 {{gate.mandatory}}
@@ -370,11 +392,13 @@ As in Phase 2, step 4, committed on the hotfix branch.
 
 **Stop and report** on failure — no PR/MR, no merge.
 
-### 7. Open and merge the hotfix PR/MR
+### 6. Open and merge the hotfix PR/MR
 
-- source: `hotfix/vX.Y.Z`, target: `{{mainBranch}}`, title: `Hotfix vX.Y.Z`
+- source: the hotfix branch, target: `{{mainBranch}}`, title: `Hotfix vX.Y.Z`
+- body/description: the `## [vX.Y.Z]` entries from `{{changelogPath}}`
+- Use the `{{prCli}}` commands above.
 
-### 8. Tag on `{{mainBranch}}` and push
+### 7. Tag on `{{mainBranch}}` and push
 
 ```bash
 git fetch origin
@@ -382,7 +406,7 @@ git tag vX.Y.Z origin/{{mainBranch}}
 git push origin vX.Y.Z
 ```
 
-### 9. Summary
+### 8. Summary
 
 Print:
 
@@ -402,4 +426,5 @@ Print:
 - `quick` mode must come from the user — never infer it or pick it to save time. It is only available if `"quick"` is in `{{modes}}`.
 - This skill never merges `{{mainBranch}}` back into `{{devBranch}}`. Reconciling the two is the user's step after the release/hotfix ships; the skill only prints the reminder. Until then, `{{devBranch}}` is missing the stabilization fixes and hotfixes that landed on `{{mainBranch}}`.
 - Hotfix: never modify `{{devBranch}}`'s `[Unreleased]` section from the hotfix branch — insert the hotfix's own dated section instead. It reaches `{{devBranch}}` when the user merges `{{mainBranch}}` into it.
+- Hotfix branch name is cosmetic — only the git tag must be `vX.Y.Z`. Adopt any `hotfix/*` branch, but before merging always verify it was cut from `{{mainBranch}}` (`git log --oneline origin/{{mainBranch}}..HEAD` shows only the hotfix's own commits). A hotfix branch based on `{{devBranch}}` would ship unreleased work to production.
 - If any step fails, stop and report — do not continue.

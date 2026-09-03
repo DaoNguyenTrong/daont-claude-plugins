@@ -1,3 +1,4 @@
 plugins/*/**/results/
 *.local.json
 .DS_Store
+.serena

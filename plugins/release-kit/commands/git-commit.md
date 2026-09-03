@@ -18,6 +18,7 @@ Check the current branch:
 - **`main` / `master`** → create a `hotfix/` branch:
   - Format: `hotfix/<short-kebab-case-description>`
   - `git checkout -b hotfix/<name>`
+  - The `git-release` hotfix workflow adopts this branch as-is — it settles the release version and (optionally) renames the branch to `hotfix/vX.Y.Z` at ship time. No need to know the version now.
 - **`release/*`** (a release-stabilization branch, e.g. `release/vX.Y.Z`) → create a `fix/` branch off it:
   - Format: `fix/<short-kebab-case-description>`
   - `git checkout -b fix/<name>`
