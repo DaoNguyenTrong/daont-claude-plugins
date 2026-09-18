@@ -12,9 +12,12 @@ Commit all current changes following a structured workflow.
 
 Check the current branch:
 
-- **`dev` / `develop` / `staging`** → create a `feature/` branch:
+- **`dev` / `develop`** → create a `feature/` branch:
   - Format: `feature/<short-kebab-case-description>`
   - `git checkout -b feature/<name>`
+- **`testing` / `staging`** → create a `fix/` branch:
+  - Format: `fix/<short-kebab-case-description>`
+  - `git checkout -b fix/<name>`
 - **`main` / `master`** → create a `hotfix/` branch:
   - Format: `hotfix/<short-kebab-case-description>`
   - `git checkout -b hotfix/<name>`
