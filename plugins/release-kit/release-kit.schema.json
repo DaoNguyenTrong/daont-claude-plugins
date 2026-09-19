@@ -2,37 +2,84 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://raw.githubusercontent.com/DaoNguyenTrong/daont-claude-plugins/main/plugins/release-kit/release-kit.schema.json",
   "title": "release-kit project config",
-  "description": "Per-project bindings for the git-release skill. Lives at <repo>/.claude/release-kit.json.",
+  "description": "Per-project bindings for the release-kit plugin (git-release skill, git-commit and git-sync commands). Lives at <repo>/.claude/release-kit.json.",
   "type": "object",
   "additionalProperties": false,
   "required": ["prCli", "gate", "modes"],
+  "not": { "required": ["versionFiles", "frontendVersionFile"] },
   "properties": {
     "$schema": { "type": "string" },
     "prCli": {
-      "description": "CLI used to open and merge the release/hotfix PR or MR.",
-      "enum": ["gh", "glab"]
+      "description": "How the release/hotfix PR or MR is opened and merged. 'gh' (GitHub CLI) and 'glab' (GitLab CLI) are automated. 'none' works with any host (Bitbucket, Azure DevOps, Gitea, protected branches): the skill prints the title and body, the user opens and merges the PR/MR in the host UI, and the skill verifies the merge with git before tagging.",
+      "enum": ["gh", "glab", "none"]
+    },
+    "remote": {
+      "description": "Name of the git remote every fetch, push and tag targets.",
+      "type": "string",
+      "minLength": 1,
+      "default": "origin"
     },
     "devBranch": {
-      "description": "Integration branch releases are cut from.",
+      "description": "Integration branch releases are cut from. When omitted, git-commit and git-sync use whichever of 'dev' / 'develop' exists on the remote.",
       "type": "string",
+      "minLength": 1,
       "default": "dev"
     },
     "mainBranch": {
-      "description": "Production branch that gets tagged.",
+      "description": "Production branch that gets tagged. When omitted, git-commit and git-sync use 'main', falling back to 'master'.",
       "type": "string",
+      "minLength": 1,
       "default": "main"
     },
+    "qaBranches": {
+      "description": "Long-lived QA branches (besides release/*). git-commit cuts fix/* branches from them and git-sync rebases those fix/* branches back onto them.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 },
+      "default": ["testing", "staging"]
+    },
+    "tagPrefix": {
+      "description": "Prefix of release tags, release branches and changelog headings: '<tagPrefix>X.Y.Z'. Use '' for bare tags (MinVer's default). 'vX.Y.Z' in the skill text means '<tagPrefix>X.Y.Z'.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]*$",
+      "default": "v"
+    },
+    "tagAnnotated": {
+      "description": "true creates annotated tags (git tag -a), which 'git describe' and some CI setups require. false creates lightweight tags.",
+      "type": "boolean",
+      "default": false
+    },
     "versioningNote": {
-      "description": "One line describing how the version is derived (echoed in summaries). e.g. 'backend via MinVer (git tag); frontend/package.json is not touched'.",
+      "description": "One line describing how the version is derived (echoed in summaries). e.g. 'backend via MinVer (git tag); frontend/package.json is not touched'. Omitted from summaries when absent.",
       "type": "string"
     },
+    "versionFiles": {
+      "description": "Files whose version must match the release tag. Each is bumped to X.Y.Z (no prefix) on the release/hotfix branch before the PR/MR, so the tagged commit already carries the version. Empty or omitted = the tag is the only version.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path"],
+        "properties": {
+          "path": {
+            "description": "Repo-relative path to a JSON file with a top-level \"version\" field (package.json, plugin.json, composer.json, ...).",
+            "type": "string",
+            "minLength": 1
+          },
+          "bumpCmd": {
+            "description": "Optional shell command to bump the file instead of editing the JSON directly. '{version}' is replaced with the numeric version. Run from the directory of 'path'. e.g. 'bun pm version {version} --no-git-tag-version'.",
+            "type": ["string", "null"]
+          }
+        }
+      }
+    },
     "frontendVersionFile": {
-      "description": "Path (repo-relative) to a package.json whose \"version\" field must be bumped to match the tag. null = nothing to bump (tag is the only version).",
+      "description": "DEPRECATED — use versionFiles. Path (repo-relative) to a package.json whose \"version\" field must be bumped to match the tag. null = nothing to bump.",
       "type": ["string", "null"],
       "default": null
     },
     "frontendVersionBumpCmd": {
-      "description": "Optional shell command to bump the frontend version instead of a direct JSON edit. '{version}' is replaced with the numeric version (no leading 'v'). Run from the directory of frontendVersionFile. e.g. 'bun pm version {version} --no-git-tag-version'.",
+      "description": "DEPRECATED — use versionFiles[].bumpCmd. Optional shell command to bump frontendVersionFile; '{version}' is replaced with the numeric version.",
       "type": ["string", "null"],
       "default": null
     },
@@ -53,16 +100,17 @@
       }
     },
     "changelogPath": {
-      "description": "Repo-relative path to the changelog.",
+      "description": "Repo-relative path to the changelog (Keep a Changelog format). Used by git-release and git-commit.",
       "type": "string",
+      "minLength": 1,
       "default": "CHANGELOG.md"
     },
     "ciTriggerNote": {
-      "description": "One sentence describing when CI runs, shown in the Phase 2 gate section. e.g. '.github/workflows/release.yml triggers on tag push; CI runs after the tag, there is no PR CI'.",
+      "description": "One sentence describing when CI runs, shown in the Phase 2 gate section. e.g. '.github/workflows/release.yml triggers on tag push; CI runs after the tag, there is no PR CI'. Omitted when absent.",
       "type": "string"
     },
     "modes": {
-      "description": "Enabled workflows. 'standard' and 'hotfix' are the usual pair; add 'quick' to allow dev -> main in one pass.",
+      "description": "Enabled workflows. 'standard' and 'hotfix' are the usual pair; add 'quick' to allow dev -> main in one pass. A workflow not listed here is refused.",
       "type": "array",
       "minItems": 1,
       "uniqueItems": true,

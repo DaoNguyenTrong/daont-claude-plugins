@@ -1,10 +1,10 @@
 {
-  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "daont-claude-plugins",
   "description": "DaoNguyenTrong's personal Claude Code plugins.",
   "owner": {
     "name": "DaoNguyenTrong",
-    "email": "hatuqs@gmail.com"
+    "email": "dao12a2@gmail.com"
   },
   "plugins": [
     {
