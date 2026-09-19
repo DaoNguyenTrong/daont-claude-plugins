@@ -4,7 +4,7 @@
   "description": "Release workflow: git-release skill (config-driven via .claude/release-kit.json), git-commit and git-sync commands.",
   "author": {
     "name": "DaoNguyenTrong",
-    "email": "hatuqs@gmail.com"
+    "email": "dao12a2@gmail.com"
   },
   "keywords": ["release", "changelog", "git", "workflow"]
 }
