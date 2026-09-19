@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [v1.1.0] - 2026-09-19
+
 ### Added
 
 - An interrupted release can be resumed: if the PR/MR merged but the tag was not pushed, running `git-release` again finishes the tag instead of opening a second PR/MR.
