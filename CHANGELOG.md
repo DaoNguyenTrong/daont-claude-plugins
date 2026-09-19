@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - The plugin manifest now reports version 1.0.0, matching the release tag instead of 0.1.0.
+- The marketplace manifest's `$schema` now points to a working URL, so editors can validate it.
 
 ## [v1.0.0] - 2026-09-18
 
