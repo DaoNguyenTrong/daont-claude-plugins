@@ -129,7 +129,7 @@ daont-claude-plugins/
 `.claude-plugin/marketplace.json`:
 ```json
 {
-  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "daont-claude-plugins",
   "owner": { "name": "DaoNguyenTrong", "email": "hatuqs@gmail.com" },
   "plugins": [

@@ -6,19 +6,33 @@ description: "Commit all current changes: branch safety, grouped commits, and ch
 
 Commit all current changes following a structured workflow.
 
+## 0. Resolve project settings
+
+If `.claude/release-kit.json` exists and parses, read it. **This command never stops because the file is missing or invalid** — fall back to the defaults below.
+
+| Setting | Config key | Default when absent |
+| --- | --- | --- |
+| Remote | `remote` | `origin` |
+| Integration branch | `devBranch` | whichever of `dev` / `develop` exists on the remote |
+| Production branch | `mainBranch` | `main`, else `master` |
+| QA branches | `qaBranches` | `testing`, `staging` |
+| Changelog | `changelogPath` | `CHANGELOG.md` |
+
+`develop` is also accepted as an integration branch, and `master` as a production branch, when the config names neither.
+
 ## Steps
 
 ### 1. Branch Safety Check
 
 Check the current branch:
 
-- **`dev` / `develop`** → create a `feature/` branch:
+- **Integration branch** (`devBranch`, or `dev` / `develop`) → create a `feature/` branch:
   - Format: `feature/<short-kebab-case-description>`
   - `git checkout -b feature/<name>`
-- **`testing` / `staging`** → create a `fix/` branch:
+- **QA branch** (any of `qaBranches`, e.g. `testing` / `staging`) → create a `fix/` branch:
   - Format: `fix/<short-kebab-case-description>`
   - `git checkout -b fix/<name>`
-- **`main` / `master`** → create a `hotfix/` branch:
+- **Production branch** (`mainBranch`, or `main` / `master`) → create a `hotfix/` branch:
   - Format: `hotfix/<short-kebab-case-description>`
   - `git checkout -b hotfix/<name>`
   - The `git-release` hotfix workflow adopts this branch as-is — it settles the release version and (optionally) renames the branch to `hotfix/vX.Y.Z` at ship time. No need to know the version now.
@@ -26,6 +40,12 @@ Check the current branch:
   - Format: `fix/<short-kebab-case-description>`
   - `git checkout -b fix/<name>`
 - **Already on a feature/fix/hotfix/chore/test branch** → stay on it, commit directly rather than spinning off a new branch.
+
+Whenever this step creates a branch, record the branch it was cut from, so `git-sync` later rebases onto the right base instead of guessing:
+
+```bash
+git config branch.<new-branch>.releaseKitBase <source-branch>     # e.g. release/v1.2.0, staging, dev, main
+```
 
 Analyze changes to determine a descriptive branch name. Inform the user of the new branch.
 
@@ -53,18 +73,20 @@ Group changed files into logical commits:
 
 **Do not ask the user to confirm — commit immediately with the drafted message(s).**
 
+End each commit message with the co-author trailer your environment specifies (for example, the attribution line in your system instructions). If it specifies none, add no trailer — do not invent one.
+
 ```bash
 git commit -m "$(cat <<'EOF'
 type(scope): message
 
-Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+<co-author trailer from your environment, if any>
 EOF
 )"
 ```
 
-### 4. Update CHANGELOG.md
+### 4. Update the changelog
 
-If `CHANGELOG.md` exists, update it:
+If the changelog file (`changelogPath`, default `CHANGELOG.md`) exists, update it:
 
 - Add entries under `## [Unreleased]` (create the section if missing, directly below the intro preamble and above the latest released version)
 - **What earns an entry:** a change someone reading the changelog would care about — user-facing behavior, API/contract, security, or developer-visible workflow/tooling. **Skip** pure formatting/`style` changes, test-infra or test-only changes that don't alter observable behavior, and internal refactors with no outward effect. If a whole group of commits is purely internal, add nothing.
