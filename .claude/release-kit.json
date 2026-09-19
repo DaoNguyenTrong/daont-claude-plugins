@@ -1,0 +1,16 @@
+{
+  "$schema": "../plugins/release-kit/release-kit.schema.json",
+  "prCli": "gh",
+  "devBranch": "dev",
+  "mainBranch": "main",
+  "versioningNote": "git tag vX.Y.Z; plugins/release-kit/.claude-plugin/plugin.json is bumped to match before tagging",
+  "versionFiles": [
+    { "path": "plugins/release-kit/.claude-plugin/plugin.json" }
+  ],
+  "gate": {
+    "mandatory": "python3 scripts/validate.py"
+  },
+  "changelogPath": "CHANGELOG.md",
+  "ciTriggerNote": ".github/workflows/validate.yml runs on pushes, PRs and tag pushes; the tag run checks plugin.json matches the tag",
+  "modes": ["standard", "quick", "hotfix"]
+}
