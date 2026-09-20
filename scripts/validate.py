@@ -159,6 +159,10 @@ def test_prompts():
         check(categories_in(mr_text) == CATEGORIES, "git-mr.md lists the six changelog categories in order")
         check("releaseKitBase" in mr_text, "git-mr reads branch.<name>.releaseKitBase")
 
+    commit = (COMMANDS / "git-commit.md").read_text(encoding="utf-8")
+    check("Unreleased" not in commit and "changelogPath" not in commit, "git-commit no longer touches the changelog")
+    check("/git-mr" in commit, "git-commit points to /git-mr")
+
 
 def extract(text, needle):
     for line in text.splitlines():
