@@ -238,6 +238,58 @@ def test_git_snippets():
         check(merged and unmerged, "merged check: release branch is merged into main, dev is not")
 
 
+def head(repo):
+    return subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True, check=True).stdout.strip()
+
+
+def test_changelog_snippets():
+    """Run the changelog-collection commands from the prompts against throwaway data."""
+    print("changelog snippets (from the prompts)")
+    skill = SKILL.read_text(encoding="utf-8")
+    check(categories_in(skill) == CATEGORIES, "SKILL.md lists the six changelog categories in order")
+    check(re.search(r"^### Collect changelog$", skill, flags=re.M) is not None, "SKILL.md has the shared 'Collect changelog' step")
+
+    ref_cmd = extract(skill, "grep -oE -m1")
+    awk_cmd = extract(skill, "awk 'tolower(")
+
+    messages = [
+        ("a GitLab merge commit", "Merge branch 'feature/x' into 'dev'\n\nfeat: add x\n\nSee merge request grp/sub/proj!123", "123"),
+        ("a GitHub merge commit", "Merge pull request #45 from owner/feature-x\n\nfeat: add x", "45"),
+        ("a GitHub squash subject", "feat(api): add x (#67)\n\nbody", "67"),
+        ("two references on one line", "feat: something (#12) (#99)", "12"),
+        ("a commit with no reference", "Merge branch 'release/v1.0.0' into 'dev'", ""),
+    ]
+    sections = [
+        ("between two headings", "## Summary\nwhy\n\n## Changelog\n- Added: A.\n- Fixed: B.\n\n## Test plan\nx\n", "- Added: A.\n- Fixed: B."),
+        ("any case, trailing spaces, none", "## Summary\nwhy\n\n## CHANGELOG  \nnone\n", "none"),
+        ("section is last in the description", "## Changelog\n- Added: A.\n", "- Added: A."),
+        ("no section", "## Summary\nwhy only\n", ""),
+        ("only the first section is used", "## Changelog\n- Added: first.\n## Other\n## Changelog\n- Added: second.\n", "- Added: first."),
+        ("HTML comment is passed through for the collector to ignore", "## Changelog\n<!-- one line per entry -->\n- Fixed: B.\n", "<!-- one line per entry -->\n- Fixed: B."),
+    ]
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        repo = tmp / "r"
+        repo.mkdir()
+        git(repo, "init", "-q")
+        for k, v in (("user.email", "t@t"), ("user.name", "t")):
+            git(repo, "config", k, v)
+
+        for name, message, expected in messages:
+            (repo / "f").write_text(name)
+            git(repo, "add", "f")
+            git(repo, "commit", "-q", "-m", message)
+            out = bash(ref_cmd.replace("<sha>", head(repo)), repo)
+            check(out.stdout.strip() == expected, f"PR/MR number from {name}: got {out.stdout.strip()!r}, want {expected!r}")
+
+        for name, body, expected in sections:
+            path = tmp / "description.md"
+            path.write_text(body, encoding="utf-8")
+            out = bash(awk_cmd.replace("<description-file>", str(path)), repo)
+            check(out.stdout.strip() == expected, f"Changelog section cut from a description: {name}")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--tag", help="release tag; plugin.json version must match it")
@@ -247,6 +299,7 @@ def main():
     test_schema()
     test_prompts()
     test_git_snippets()
+    test_changelog_snippets()
 
     print()
     if failures:

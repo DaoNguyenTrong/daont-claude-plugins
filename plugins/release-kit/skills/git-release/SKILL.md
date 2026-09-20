@@ -167,6 +167,60 @@ git commit -m "chore: bump version to vX.Y.Z"
 git push origin <branch>
 ```
 
+### Collect changelog
+
+Compiles the `## [vX.Y.Z]` section from the `## Changelog` sections of merged PRs/MRs (`git-mr` writes them). Inputs: `<range>` (a git revision range) and `<target>` (the branch the PRs/MRs must have been merged into). Output: a draft, plus the PRs/MRs that have no usable `## Changelog` section and the commits that belong to no PR/MR.
+
+Categories, in this order: Added, Changed, Deprecated, Removed, Fixed, Security.
+
+**1. Can the host be queried?** `{{prCli}}` is `gh` or `glab` and the CLI is logged in (`gh auth status` / `glab auth status`). If not, use *Manual collection* below instead of steps 3 and 4.
+
+**2. List the commits.** One per PR/MR for merge-commit histories, one per commit for squash or fast-forward histories:
+
+```bash
+git rev-list --first-parent <range>
+```
+
+**3. Find each PR/MR number.** Cheap first — read it from the commit message (GitLab `See merge request grp/proj!N`, GitHub `Merge pull request #N`, or a squash subject ending `(#N)`):
+
+```bash
+git show -s --format=%B <sha> | grep -oE -m1 '(merge request [^ ]*!|pull request #|\(#)[0-9]+' | grep -oE '[0-9]+$' | head -1
+```
+
+Nothing printed → ask the host:
+
+```bash
+gh api repos/{owner}/{repo}/commits/<sha>/pulls --jq '.[].number'                 # gh
+glab api "projects/:id/repository/commits/<sha>/merge_requests"                    # glab: use each "iid"
+```
+
+If the installed `glab` does not accept `:id`, take the project path from `git remote get-url origin` and URL-encode it. A commit that still maps to no PR/MR goes on the list of commits without a PR/MR. De-duplicate the numbers.
+
+**4. Fetch and filter.**
+
+```bash
+gh pr view <N> --json number,title,body,baseRefName,state,url                      # gh
+glab mr view <N> -F json                                                            # glab: description, target_branch, state, web_url
+```
+
+Keep only PRs/MRs that are **merged** and whose base branch is `<target>`. That last filter drops fix PRs/MRs that went into an earlier `release/*` and only reached `{{devBranch}}` through a back-merge, and hotfix PRs/MRs (they have their own section). PRs/MRs that target a QA branch are not collected.
+
+**5. Read each `## Changelog` section.** Save the description to a file and cut the section out — it starts at a `## Changelog` heading (any case) and ends at the next `## ` heading:
+
+```bash
+awk 'tolower($0) ~ /^## +changelog[ \t]*$/ {f=1; next} f && /^## / {exit} f' <description-file>
+```
+
+Ignore blank lines and HTML comments (`<!-- ... -->`). Every other line must match `- <Category>: <sentence>` (category in any case), or the whole section must be just `none` (any case, optional trailing period). Anything else, or no section at all, puts the PR/MR on the list of PRs/MRs with no usable Changelog section.
+
+**6. Assemble the draft.** Group by category in the order above; inside a category keep merge order (oldest first). Merge entries that say the same thing and list every reference: `(!12, !15)`. Normalize the wording — English, present tense for `Added` and past tense for `Changed`/`Removed`, `Fixed` written as the bug being gone, no first person, one sentence of about 20 words — and end each entry with its reference: `(!N)` when `{{prCli}}` is `glab`, `(#N)` when it is `gh`. Also fold in whatever is under `## [Unreleased]` from the old workflow (those entries have no reference) and leave `[Unreleased]` empty.
+
+**7. Review gate.** Show the user the draft, the list of PRs/MRs with no usable Changelog section, and the list of commits without a PR/MR. For each PR/MR with no usable section the user picks one: write the entry, `none`, or skip. Offer "use the PR/MR titles" as one extra choice for the whole list (`feat` → Added, `fix` → Fixed, `refactor`/`perf`/`chore`/`docs`/`style`/`test` skipped unless the user names a category) — only when the user picks it, never by default; it exists for the first release after moving to this workflow, when older PRs/MRs have no Changelog section. Write nothing to `{{changelogPath}}` until the user confirms the draft.
+
+**Manual collection** (no API access): take the PR/MR numbers from the commit-message pattern in step 3, list them, and ask the user to paste each one's `## Changelog` section — or to accept the commit subjects as a draft. Then continue at step 6. In Phase 2 there is no way to filter by `<target>`: list the PRs/MRs found in `<range>` and ask, one by one, whether the section already covers it.
+
+**Writing the section:** insert `## [vX.Y.Z] - YYYY-MM-DD` directly below `## [Unreleased]` (add that heading if it is missing, and leave it empty), with one `### <Category>` block for each non-empty category.
+
 ### Confirm before shipping
 
 Merge and tag cannot be undone by this skill. Before the PR/MR step, print: version, `<source> → {{mainBranch}}`, `{{prCli}}`, the commit count (`git rev-list --count origin/{{mainBranch}}..HEAD`), and that the gate passed. **Ask the user to confirm.** Skip the question only if the user's request already said to proceed without asking.
