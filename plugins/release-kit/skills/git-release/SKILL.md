@@ -1,6 +1,6 @@
 ---
 name: git-release
-description: 'Release a new version: finalize CHANGELOG, cut a release/vX.Y.Z QA-stabilization branch, then (once stabilized) merge to the production branch and tag. Config-driven per project via .claude/release-kit.json — supports GitHub (gh), GitLab (glab) or any host (manual PR/MR), optional quick release (dev → main in one pass), hotfix, and resuming an interrupted release. The git tag is the version (MinVer or equivalent); optional version files (package.json, plugin.json, ...) are bumped to match. Examples: "Release v1.1.0", "Release patch", "Cut the release", "Ship the release", "Quick release v1.1.0", "Hotfix v1.2.1", "Resume the release"'
+description: 'Release a new version: cut a release/vX.Y.Z QA-stabilization branch and compile the CHANGELOG on it from the merged PRs/MRs, then (once stabilized) merge to the production branch and tag. Config-driven per project via .claude/release-kit.json — supports GitHub (gh), GitLab (glab) or any host (manual PR/MR), optional quick release (dev → main in one pass), hotfix, and resuming an interrupted release. The git tag is the version (MinVer or equivalent); optional version files (package.json, plugin.json, ...) are bumped to match. Examples: "Release v1.1.0", "Release patch", "Cut the release", "Ship the release", "Quick release v1.1.0", "Hotfix v1.2.1", "Resume the release"'
 ---
 
 # Git Release
@@ -56,7 +56,7 @@ Minimal template:
 
 ## Modes
 
-- **Standard release**: `{{devBranch}} → release/vX.Y.Z → {{mainBranch}}`. Two phases, run as separate skill invocations because QA stabilization happens in between and can take any amount of time — **Cut** (finalize CHANGELOG on `{{devBranch}}`, branch off) and **Ship** (test, merge, tag).
+- **Standard release**: `{{devBranch}} → release/vX.Y.Z → {{mainBranch}}`. Two phases, run as separate skill invocations because QA stabilization happens in between and can take any amount of time — **Cut** (branch off, then compile the CHANGELOG on `release/vX.Y.Z`) and **Ship** (test, merge, tag).
 - **Quick release** (only if `"quick"` is in `{{modes}}`): `{{devBranch}} → {{mainBranch}}` directly, one pass, no stabilization branch. Triggered by the user passing `quick` — never inferred.
 - **Hotfix**: `{{mainBranch}} → hotfix/… → {{mainBranch}}`. The branch name is cosmetic (`hotfix/vX.Y.Z` is the convention, but `hotfix/<description>` is accepted); only the git tag must be `vX.Y.Z`.
 
@@ -246,7 +246,7 @@ git ls-remote --tags origin refs/tags/vX.Y.Z        # already pushed?
 
 ### Protected branch fallback
 
-If a push straight to `{{devBranch}}` is rejected because the branch is protected, do not force it. Move the commit onto a short-lived branch and go through a PR/MR:
+Only Quick release commits straight to `{{devBranch}}`; the other workflows commit to `release/*` or `hotfix/*`. If a push straight to `{{devBranch}}` is rejected because the branch is protected, do not force it. Move the commit onto a short-lived branch and go through a PR/MR:
 
 ```bash
 git checkout -b chore/release-vX.Y.Z-changelog           # the branch keeps the commit made on {{devBranch}}
@@ -270,9 +270,10 @@ git fetch origin
 git status --porcelain                                        # must be clean
 git rev-list --left-right --count origin/{{devBranch}}...{{devBranch}}   # must be "0	0"
 git ls-remote --exit-code --heads origin release/vX.Y.Z       # must exit 2 (branch not cut yet)
+git merge-base --is-ancestor origin/{{mainBranch}} origin/{{devBranch}}   # must exit 0 (dev already contains main)
 ```
 
-**Stop and warn** if not on `{{devBranch}}`, the working directory is dirty, or `{{devBranch}}` is not even with `origin/{{devBranch}}` in either direction. If it is only *behind*, offer `git pull --ff-only` and continue. If `release/vX.Y.Z` already exists on the remote, **stop**: it was cut already — check it out and run Phase 2. Version checks (tag must not exist) are in *Determine version*.
+**Stop and warn** if not on `{{devBranch}}`, the working directory is dirty, or `{{devBranch}}` is not even with `origin/{{devBranch}}` in either direction. If it is only *behind*, offer `git pull --ff-only` and continue. If `release/vX.Y.Z` already exists on the remote, **stop**: it was cut already — check it out and run Phase 2. Version checks (tag must not exist) are in *Determine version*. If `origin/{{mainBranch}}` is not an ancestor of `origin/{{devBranch}}` (a hotfix or release was never merged back), **stop** and ask the user to reconcile first (`git checkout {{devBranch}} && git pull && git merge origin/{{mainBranch}} && git push`): `{{changelogPath}}` on `{{devBranch}}` has to contain the released versions, or the section compiled here will conflict when it is merged back.
 
 #### 2. Run the gate (fail-fast, not the mandatory gate)
 
@@ -282,48 +283,7 @@ git ls-remote --exit-code --heads origin release/vX.Y.Z       # must exit 2 (bra
 
 **Stop and report** if it fails — don't cut a release branch from a known-broken `{{devBranch}}`. (Phase 2's run is the mandatory gate; this one just avoids wasted stabilization effort.)
 
-#### 3. Finalize `{{changelogPath}}` on `{{devBranch}}`
-
-The `git-commit` command adds entries under `## [Unreleased]`. This step promotes that section to the release version.
-
-1. Replace `## [Unreleased]` with `## [vX.Y.Z] - YYYY-MM-DD`
-2. Add a new empty `## [Unreleased]` section above it
-
-Before / after:
-
-```markdown
-## [Unreleased]
-
-### Added
-
-- some feature
-```
-
-```markdown
-## [Unreleased]
-
-## [vX.Y.Z] - YYYY-MM-DD
-
-### Added
-
-- some feature
-```
-
-**Do not edit this entry again on the release branch** — stabilization fixes change code, not this section, which keeps the `release/vX.Y.Z → {{mainBranch}}` merge clean.
-
-**Stop and warn** if `## [Unreleased]` has no entries — there is nothing to release. **Exception (resume):** if a `## [vX.Y.Z]` section already exists and `[Unreleased]` is empty, an earlier run already promoted it — skip this step and go to step 4 (if `origin/{{devBranch}}` lacks that commit, push it first).
-
-Commit and push (already on `{{devBranch}}` per pre-flight):
-
-```bash
-git add {{changelogPath}}
-git commit -m "docs: update CHANGELOG for vX.Y.Z"
-git push origin {{devBranch}}
-```
-
-If the push is rejected as protected, use the *Protected branch fallback*.
-
-#### 4. Cut the release branch
+#### 3. Cut the release branch
 
 ```bash
 git checkout -b release/vX.Y.Z {{devBranch}}
@@ -331,12 +291,30 @@ git config branch.release/vX.Y.Z.releaseKitBase {{devBranch}}
 git push -u origin release/vX.Y.Z
 ```
 
+#### 4. Compile `{{changelogPath}}` on the release branch
+
+`git-mr` puts a `## Changelog` section in every PR/MR description; this step turns them into the release entry. You are on `release/vX.Y.Z`, so nothing is committed to `{{devBranch}}`.
+
+Run *Collect changelog* with `<range>` = `<previous-tag>..origin/{{devBranch}}` and `<target>` = `{{devBranch}}`, where `<previous-tag>` is the latest release tag from *Determine version*. **No release tag exists yet** → ask the user where to start: a tag, a commit, a date (`--since`), or `all`.
+
+Insert the `## [vX.Y.Z] - YYYY-MM-DD` section as described there, then commit and push:
+
+```bash
+git add {{changelogPath}}
+git commit -m "docs: update CHANGELOG for vX.Y.Z"
+git push origin release/vX.Y.Z
+```
+
+**Stop and warn** if the confirmed draft is empty — there is nothing to release. **Exception (resume):** a `## [vX.Y.Z]` section already exists on the branch — an earlier run already compiled it; skip to step 5.
+
+The date is the cut date; Phase 2 step 3 sets the ship date.
+
 #### 5. Summary
 
 Print:
 
 - Release branch name and version
-- Reminder: QA stabilizes on `release/vX.Y.Z` from here — bugs go through `fix/*` branched off `release/vX.Y.Z`, PR'd/MR'd back into it. (`git-commit` creates those branches and `git-sync` keeps them on top of the release branch.)
+- Reminder: QA stabilizes on `release/vX.Y.Z` from here — bugs go through `fix/*` branched off `release/vX.Y.Z`, PR'd/MR'd back into it with `git-mr`; the `## Changelog` section of each is picked up when you ship. (`git-commit` creates those branches, `git-mr` opens the PR/MR and `git-sync` keeps them on top of the release branch.)
 - Reminder: run this skill again on `release/vX.Y.Z` (Phase 2) once stabilization is done
 
 **Stop here.** Do not proceed to Phase 2 in the same run.
@@ -345,7 +323,7 @@ Print:
 
 ### Phase 2: Ship (run on `release/vX.Y.Z`)
 
-Resumable: if the run stops after step 6 has started, run the skill again — steps 6 and 7 detect what is already done.
+Resumable: if the run stops after step 7 has started, run the skill again — steps 7 and 8 detect what is already done.
 
 #### 1. Pre-flight checks
 
@@ -376,7 +354,29 @@ git merge origin/{{mainBranch}}
 git push origin release/vX.Y.Z
 ```
 
-#### 3. Run the gate — mandatory
+#### 3. Sync `{{changelogPath}}`
+
+Fix PRs/MRs merged into `release/vX.Y.Z` after the cut carry their own `## Changelog` sections. Bring them into the release section and set the ship date.
+
+1. **The `## [vX.Y.Z]` section is missing** (Phase 1 stopped after cutting the branch) → build it first. Find where the branch left `{{devBranch}}`, then run *Collect changelog* with `<range>` = `<previous-tag>..<cut-point>` and `<target>` = `{{devBranch}}`:
+
+   ```bash
+   git merge-base origin/{{devBranch}} origin/release/vX.Y.Z       # <cut-point>
+   ```
+
+   `{{devBranch}}` may have moved on since the cut; the merge base keeps its newer PRs/MRs out of this release.
+
+2. Run *Collect changelog* with `<range>` = `origin/{{devBranch}}..origin/release/vX.Y.Z` and `<target>` = `release/vX.Y.Z`. Skip every PR/MR whose reference is already in the section. When listing commits without a PR/MR, leave out the `docs: update CHANGELOG` commits this skill made and the merge commit from step 2. A PR/MR with no `## Changelog` section is asked about again on every run; one whose section says `none` is not.
+
+3. Set the heading date to today (the ship date). If anything changed:
+
+   ```bash
+   git add {{changelogPath}}
+   git commit -m "docs: update CHANGELOG for vX.Y.Z"
+   git push origin release/vX.Y.Z
+   ```
+
+#### 4. Run the gate — mandatory
 
 ```bash
 {{gate.mandatory}}
@@ -386,23 +386,23 @@ git push origin release/vX.Y.Z
 
 Gate context: {{ciTriggerNote}} — so this local run is the release's verification before the tag. (Omit this line if `ciTriggerNote` is absent.)
 
-#### 4. Bump version files
+#### 5. Bump version files
 
 Run *Bump version files* on `release/vX.Y.Z`.
 
-#### 5. Confirm
+#### 6. Confirm
 
 Run *Confirm before shipping*.
 
-#### 6. Open and merge the release PR/MR
+#### 7. Open and merge the release PR/MR
 
 Run *Open and merge the PR/MR*: source `release/vX.Y.Z`, target `{{mainBranch}}`, title `Release vX.Y.Z`, delete the source branch.
 
-#### 7. Tag
+#### 8. Tag
 
 Run the *Tag step*.
 
-#### 8. Summary
+#### 9. Summary
 
 Print:
 
@@ -433,9 +433,9 @@ Same as Standard Phase 1, step 1 (`{{devBranch}}` even with its remote, clean, e
 
 **Stop and report** on failure — quick mode has no second gate.
 
-#### 4. Finalize `{{changelogPath}}` on `{{devBranch}}`
+#### 4. Compile `{{changelogPath}}` on `{{devBranch}}`
 
-Same as Standard Phase 1, step 3 — promote `## [Unreleased]` to `## [vX.Y.Z] - YYYY-MM-DD`, add a fresh empty `## [Unreleased]`. **Stop and warn** if `[Unreleased]` is empty (unless resuming — a `## [vX.Y.Z]` section already exists).
+There is no release branch, so the section is written straight to `{{devBranch}}`. Run *Collect changelog* with `<range>` = `<previous-tag>..origin/{{devBranch}}` and `<target>` = `{{devBranch}}` (no release tag yet → ask where to start, as in Standard Phase 1 step 4). **Stop and warn** if the confirmed draft is empty (unless resuming — a `## [vX.Y.Z]` section already exists). Commit and push; if the push is rejected as protected, use the *Protected branch fallback*:
 
 ```bash
 git add {{changelogPath}}
@@ -587,7 +587,8 @@ Print:
 - Never force push. Never bypass branch protection (`--admin`, `--no-verify`, force flags).
 - Config first: if `.claude/release-kit.json` is missing or invalid, STOP and ask — never guess bindings.
 - Never skip the gate: Standard Phase 1's run is fail-fast (report and stop, but its absence alone doesn't block a later Phase 2). Standard Phase 2's, Quick release's, and the hotfix's are the mandatory gate — a failure blocks the release (no PR/MR, no merge).
-- Never skip the CHANGELOG finalization.
+- Never skip the CHANGELOG compilation (Phase 1 step 4, Phase 2 step 3, Quick step 4, Hotfix step 3) or its review gate.
+- The `## [vX.Y.Z]` section on `release/*` is written only by this skill (Phase 1 step 4 and Phase 2 step 3). Stabilization fixes reach it through the `## Changelog` section of their PR/MR (`git-mr`), never by hand-editing.
 - Confirm with the user before the PR/MR merge and tag — they are the steps this skill cannot undo.
 - Never tag until the merge is verified (`git merge-base --is-ancestor`), and never move or delete an existing tag.
 - The git tag is the version — there is no backend version file. Only bump the files listed in `{{versionFiles}}`.
