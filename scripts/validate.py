@@ -26,6 +26,7 @@ SKILL = PLUGIN / "skills" / "git-release" / "SKILL.md"
 COMMANDS = PLUGIN / "commands"
 SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
 CATEGORIES = ["Added", "Changed", "Deprecated", "Removed", "Fixed", "Security"]
+GIT_MR_LINE_BUDGET = 130
 LANGUAGE_RULE = ("Language: write every commit message, PR/MR title and description, "
                  "and changelog entry in English, whatever language the user talks to you in.")
 
@@ -166,6 +167,11 @@ def test_prompts():
         mr_text = mr.read_text(encoding="utf-8")
         check(categories_in(mr_text) == CATEGORIES, "git-mr.md lists the six changelog categories in order")
         check("releaseKitBase" in mr_text, "git-mr reads branch.<name>.releaseKitBase")
+        for label in ("## Review", "Up to date with", "Everything committed", "Tests:", "Breaking change:", "Look at:"):
+            check(label in mr_text, f"git-mr.md review checklist has '{label}'")
+        check("at most 15 lines" in mr_text, "git-mr.md caps the description at 15 lines")
+        lines = len(mr_text.splitlines())
+        check(lines <= GIT_MR_LINE_BUDGET, f"git-mr.md stays within its {GIT_MR_LINE_BUDGET}-line budget (now {lines})")
 
     commit = (COMMANDS / "git-commit.md").read_text(encoding="utf-8")
     check("Unreleased" not in commit and "changelogPath" not in commit, "git-commit no longer touches the changelog")
