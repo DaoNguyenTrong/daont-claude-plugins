@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- `git-mr` opens a PR/MR for your branch, with a `## Changelog` section drafted from your commits that the release changelog is built from.
+- `git-mr` opens a PR/MR for your branch with a short description: a summary, the `## Changelog` section the release changelog is built from, and a review checklist ticked only for facts it verified.
 - `git-release` compiles the release changelog from the merged PRs/MRs and shows it for review before anything is written.
 - `git-release` requires `dev` to contain `main` before cutting a release, so the changelog on `dev` always has every released version.
 - Commit messages, PR/MR titles and descriptions, and changelog entries are always written in English, whatever language you talk to the commands in.
