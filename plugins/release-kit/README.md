@@ -4,8 +4,9 @@ Release workflow for git projects with an integration branch and a production br
 
 | Component | Type | What it does |
 | --- | --- | --- |
-| `git-release` | skill | Cut a release branch, finalize CHANGELOG, ship to the production branch, tag. Standard / quick / hotfix, resumable. Driven by a per-project config file. |
-| `git-commit` | command | Branch-safety check, grouped conventional commits, `[Unreleased]` changelog update. |
+| `git-release` | skill | Cut a release branch, compile the CHANGELOG from merged PRs/MRs, ship to the production branch, tag. Standard / quick / hotfix, resumable. Driven by a per-project config file. |
+| `git-commit` | command | Branch-safety check and grouped conventional commits. |
+| `git-mr` | command | Push the branch and open a PR/MR with a short description: a summary, the `## Changelog` section the release is built from, and a review checklist ticked only for facts it verified. |
 | `git-sync` | command | Fetch, then rebase short-lived branches onto the branch they were cut from and fast-forward long-lived ones; stash/restore, conflict-abort. |
 
 ## Install in a project
@@ -30,21 +31,21 @@ Then create `.claude/release-kit.json` (see below) and remove any project-local
 
 Schema: [`release-kit.schema.json`](./release-kit.schema.json). Required: `prCli`, `gate`, `modes`.
 
-`git-release` needs the file and stops without it. `git-commit` and `git-sync` read it when it exists and fall back to the defaults below when it does not.
+`git-release` needs the file and stops without it. `git-commit`, `git-mr` and `git-sync` read it when it exists and fall back to the defaults below when it does not.
 
 | Field | Meaning | Default |
 | --- | --- | --- |
 | `prCli` | `gh`, `glab`, or `none` — `none` works with any host: the skill prints the title/body, you open and merge the PR/MR (merge commit) in the UI, and it verifies the merge with git before tagging | — |
 | `remote` | git remote used for every fetch/push/tag | `origin` |
 | `devBranch` / `mainBranch` | integration branch / production branch | `dev` / `main` |
-| `qaBranches` | long-lived QA branches; `git-commit` cuts `fix/*` from them, `git-sync` rebases those back onto them | `["testing", "staging"]` |
+| `qaBranches` | long-lived QA branches; `git-commit` cuts `fix/*` from them, `git-mr` refuses to open a PR/MR from them and can target them, `git-sync` rebases those back onto them | `["testing", "staging"]` |
 | `tagPrefix` | prefix of tags, `release/*` branches and changelog headings (`""` for bare tags such as MinVer's default) | `v` |
 | `tagAnnotated` | `true` creates annotated tags (`git tag -a`) | `false` |
 | `versioningNote` | one line on how the version is derived (echoed in summaries) | omitted |
 | `versionFiles` | JSON files (`package.json`, `plugin.json`, ...) whose `"version"` is bumped to the tag on the release branch; each entry takes an optional `bumpCmd` (`{version}` placeholder) | `[]` |
 | `gate.mandatory` | the blocking verification command (Phase 2 / quick / hotfix) | — |
 | `gate.phase1` | fail-fast check before cutting | `gate.mandatory` |
-| `changelogPath` | changelog used by `git-release` and `git-commit` | `CHANGELOG.md` |
+| `changelogPath` | changelog written by `git-release` | `CHANGELOG.md` |
 | `ciTriggerNote` | one sentence on when CI runs, shown in the Phase 2 gate section | omitted |
 | `modes` | subset of `standard`, `quick`, `hotfix`; a mode that is not listed is refused | — |
 
@@ -121,21 +122,78 @@ Schema: [`release-kit.schema.json`](./release-kit.schema.json). Required: `prCli
 }
 ```
 
+## Changelog workflow
+
+The release changelog is compiled from PR/MR descriptions, so feature and fix branches never edit `CHANGELOG.md`.
+
+```text
+feature/* or fix/*  --/git-mr-->  PR/MR with a "## Changelog" section  --merge-->  dev
+                                                                                    |
+                              /git-release (Cut): release/vX.Y.Z  <-----------------+
+                              compiles "## [vX.Y.Z]" from the merged PRs/MRs, you review it
+                                                    |
+                  fix branches: /git-mr --> release/vX.Y.Z   (picked up when you ship)
+                                                    |
+                              /git-release (Ship): sync the changelog, review PR/MR, tag on main
+```
+
+**The `## Changelog` section** in every PR/MR description:
+
+```markdown
+## Changelog
+- Added: Admins can disable a project to block its chatbot everywhere it's used.
+- Fixed: Exports no longer fail for projects with no members.
+```
+
+Or just `none` when a reader of the changelog would not care. Categories are Added, Changed, Deprecated, Removed, Fixed, Security. A fix for a bug that never shipped in a released version is `none` — readers never saw the bug. `git-mr` drafts the section from your commits and asks before it opens the PR/MR.
+
+**The `## Review` checklist** tells the reviewer what was verified. `git-mr` ticks a box only for a fact it checked in that run — up to date with the base, everything committed, tests passed on this exact commit — and otherwise leaves `[ ]` with the reason. `Breaking change` and `Look at` are always left for the reviewer. The whole description stays within 15 lines.
+
+**MR templates.** Add the three sections to your PR/MR template so nobody has to remember the format:
+
+- GitLab: `.gitlab/merge_request_templates/Default.md`
+- GitHub: `.github/pull_request_template.md`
+
+```markdown
+## Summary
+<!-- 1-2 lines: why this change exists -->
+
+## Changelog
+<!-- One line per entry: "- Added: ...", "- Changed: ...", "- Fixed: ...". Write "none" when a reader of the changelog would not care. -->
+
+## Review
+- [ ] Up to date with the base branch
+- [ ] Everything committed
+- [ ] Tests: <command that passed>
+- [ ] Look at: <up to 3 files worth a close read>
+```
+
+A PR/MR with no usable `## Changelog` section is never dropped silently: `git-release` lists it at the review gate and asks what to do.
+
+**Upgrading from v1.x** (`git-commit` used to write `## [Unreleased]`):
+
+1. Add the template above to each project.
+2. Run `claude plugin update release-kit`.
+3. Entries still under `## [Unreleased]` are folded into the next release automatically.
+4. PRs/MRs merged before the upgrade have no `## Changelog` section, so the first Cut lists them; write entries once, or pick "use the PR/MR titles" at the review gate.
+5. Cut now requires `main` to be merged into `dev` (`git merge origin/main`), so the changelog on `dev` contains every released version.
+
 ## Safety and recovery
 
 - The skill asks for confirmation right before the merge and the tag — the two steps it cannot undo.
 - It never tags before the merge is verified (`git merge-base --is-ancestor`), never moves or deletes an existing tag, and never bypasses branch protection. If a merge is refused (required checks, approvals) it prints the PR/MR link and stops.
 - A release that stopped halfway (PR merged, tag not pushed) is safe to resume: run `/git-release` and say "resume", or run it again — every irreversible step first checks whether it is already done.
 - Hotfix branches are checked statelessly: any commit shared with the unreleased `devBranch` work stops the release.
-- If `devBranch` is protected, the changelog commit goes through a short-lived PR/MR instead of a direct push.
+- Quick release is the only workflow that commits to `devBranch` directly; if it is protected, that commit goes through a short-lived PR/MR instead of a direct push.
 
 ## Assumptions and limits
 
 - Two long-lived branches (integration → production), git-flow style. Single-trunk repositories are not supported.
 - One version per repository: a single tag stream and a single changelog. Monorepos with per-package tags are not supported.
-- The changelog follows [Keep a Changelog](https://keepachangelog.com/) with `## [Unreleased]` and `## [vX.Y.Z] - date` headings, and commits follow Conventional Commits.
+- The changelog follows [Keep a Changelog](https://keepachangelog.com/) with a `## [Unreleased]` heading (kept empty) and `## [vX.Y.Z] - date` headings, commits follow Conventional Commits, and every PR/MR description carries a `## Changelog` section.
 - Shell commands assume a POSIX shell (bash; Git Bash on Windows). The hotfix guard uses bash process substitution.
 - PR/MR automation covers GitHub and GitLab; every other host goes through `prCli: "none"`.
+- Everything the commands and the skill write to git or the host — commit messages, PR/MR titles and descriptions, changelog entries, tag messages — is in English, whatever language you talk to them in.
 - The skill is an LLM-executed prompt, not a script: it is deterministic where it runs git commands and depends on the model following the text elsewhere. The confirmation step and the git-verified checks exist for that reason.
 
 ## Updating
@@ -174,3 +232,14 @@ Manual checklist — run `/git-release` in a scratch repo with a fake `.claude/r
 - [ ] Hotfix branch cut from `dev` → skill STOPs; cut from `main` → continues
 - [ ] Summary prints the "reconcile dev with main" action for the user
 - [ ] `/git-sync` on a `fix/*` branch cut from `release/vX.Y.Z` rebases onto that release branch, not `dev`
+- [ ] `/git-mr` on `dev`, `main`, `release/*`, `hotfix/*` → refuses; on `hotfix/*` it points to `git-release`
+- [ ] `feature/*` cut from `dev` → PR/MR targets `dev`; `fix/*` cut from `release/vX.Y.Z` → targets `release/vX.Y.Z`
+- [ ] `/git-mr` again on a branch that already has a PR/MR → updates the description, no second PR/MR
+- [ ] `prCli: none` → `/git-mr` pushes, prints title and description
+- [ ] Cut while `main` has commits `dev` lacks → stops and asks to merge back
+- [ ] Cut with PRs/MRs that have no `## Changelog` section → they are listed at the review gate, not dropped
+- [ ] First Cut with no release tag → asks where to start
+- [ ] Merge a fix PR/MR into `release/vX.Y.Z` after the cut, then Ship → its entry is added and the heading date becomes the ship date
+- [ ] Stop Cut right after the branch is cut, then Ship → the section is built from the cut point, without dev's later PRs/MRs
+- [ ] Entries left under `## [Unreleased]` are folded into the new section and `[Unreleased]` ends up empty
+- [ ] `/git-mr` on a branch that is behind its base with uncommitted files and no test run → the description stays within 15 lines and the `## Review` checklist shows `[ ]` with the reason for each of the three

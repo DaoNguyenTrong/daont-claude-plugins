@@ -4,7 +4,7 @@ Personal Claude Code marketplace.
 
 | Plugin | Description |
 | --- | --- |
-| [`release-kit`](./plugins/release-kit) | Release workflow — `git-release` skill (config-driven via `.claude/release-kit.json`) plus `git-commit` and `git-sync` commands. |
+| [`release-kit`](./plugins/release-kit) | Release workflow — `git-release` skill (config-driven via `.claude/release-kit.json`) plus `git-commit`, `git-mr` and `git-sync` commands. |
 
 ## Use
 
