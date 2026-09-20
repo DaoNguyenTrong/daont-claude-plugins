@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [v2.0.0] - 2026-09-20
+
 ### Added
 
 - `git-mr` opens a PR/MR for your branch with a short description: a summary, the `## Changelog` section the release changelog is built from, and a review checklist ticked only for facts it verified.
