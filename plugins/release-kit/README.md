@@ -6,7 +6,7 @@ Release workflow for git projects with an integration branch and a production br
 | --- | --- | --- |
 | `git-release` | skill | Cut a release branch, compile the CHANGELOG from merged PRs/MRs, ship to the production branch, tag. Standard / quick / hotfix, resumable. Driven by a per-project config file. |
 | `git-commit` | command | Branch-safety check and grouped conventional commits. |
-| `git-mr` | command | Push the branch and open a PR/MR whose description carries the `## Changelog` section the release is built from. |
+| `git-mr` | command | Push the branch and open a PR/MR with a short description: a summary, the `## Changelog` section the release is built from, and a review checklist ticked only for facts it verified. |
 | `git-sync` | command | Fetch, then rebase short-lived branches onto the branch they were cut from and fast-forward long-lived ones; stash/restore, conflict-abort. |
 
 ## Install in a project
@@ -147,17 +147,25 @@ feature/* or fix/*  --/git-mr-->  PR/MR with a "## Changelog" section  --merge--
 
 Or just `none` when a reader of the changelog would not care. Categories are Added, Changed, Deprecated, Removed, Fixed, Security. A fix for a bug that never shipped in a released version is `none` — readers never saw the bug. `git-mr` drafts the section from your commits and asks before it opens the PR/MR.
 
-**MR templates.** Add the two sections to your PR/MR template so nobody has to remember the format:
+**The `## Review` checklist** tells the reviewer what was verified. `git-mr` ticks a box only for a fact it checked in that run — up to date with the base, everything committed, tests passed on this exact commit — and otherwise leaves `[ ]` with the reason. `Breaking change` and `Look at` are always left for the reviewer. The whole description stays within 15 lines.
+
+**MR templates.** Add the three sections to your PR/MR template so nobody has to remember the format:
 
 - GitLab: `.gitlab/merge_request_templates/Default.md`
 - GitHub: `.github/pull_request_template.md`
 
 ```markdown
 ## Summary
-<!-- 1-3 lines: why this change exists -->
+<!-- 1-2 lines: why this change exists -->
 
 ## Changelog
 <!-- One line per entry: "- Added: ...", "- Changed: ...", "- Fixed: ...". Write "none" when a reader of the changelog would not care. -->
+
+## Review
+- [ ] Up to date with the base branch
+- [ ] Everything committed
+- [ ] Tests: <command that passed>
+- [ ] Look at: <up to 3 files worth a close read>
 ```
 
 A PR/MR with no usable `## Changelog` section is never dropped silently: `git-release` lists it at the review gate and asks what to do.
@@ -185,6 +193,7 @@ A PR/MR with no usable `## Changelog` section is never dropped silently: `git-re
 - The changelog follows [Keep a Changelog](https://keepachangelog.com/) with a `## [Unreleased]` heading (kept empty) and `## [vX.Y.Z] - date` headings, commits follow Conventional Commits, and every PR/MR description carries a `## Changelog` section.
 - Shell commands assume a POSIX shell (bash; Git Bash on Windows). The hotfix guard uses bash process substitution.
 - PR/MR automation covers GitHub and GitLab; every other host goes through `prCli: "none"`.
+- Everything the commands and the skill write to git or the host — commit messages, PR/MR titles and descriptions, changelog entries, tag messages — is in English, whatever language you talk to them in.
 - The skill is an LLM-executed prompt, not a script: it is deterministic where it runs git commands and depends on the model following the text elsewhere. The confirmation step and the git-verified checks exist for that reason.
 
 ## Updating
@@ -233,3 +242,4 @@ Manual checklist — run `/git-release` in a scratch repo with a fake `.claude/r
 - [ ] Merge a fix PR/MR into `release/vX.Y.Z` after the cut, then Ship → its entry is added and the heading date becomes the ship date
 - [ ] Stop Cut right after the branch is cut, then Ship → the section is built from the cut point, without dev's later PRs/MRs
 - [ ] Entries left under `## [Unreleased]` are folded into the new section and `[Unreleased]` ends up empty
+- [ ] `/git-mr` on a branch that is behind its base with uncommitted files and no test run → the description stays within 15 lines and the `## Review` checklist shows `[ ]` with the reason for each of the three
