@@ -25,6 +25,13 @@ SCHEMA = PLUGIN / "release-kit.schema.json"
 SKILL = PLUGIN / "skills" / "git-release" / "SKILL.md"
 COMMANDS = PLUGIN / "commands"
 SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
+CATEGORIES = ["Added", "Changed", "Deprecated", "Removed", "Fixed", "Security"]
+
+
+def categories_in(text):
+    """The changelog categories a prompt declares on its 'Categories, in this order: ...' line."""
+    match = re.search(r"Categories, in this order: (.+?)\.", text)
+    return [c.strip() for c in match.group(1).split(",")] if match else None
 
 failures = []
 
@@ -144,6 +151,13 @@ def test_prompts():
     sync = (COMMANDS / "git-sync.md").read_text(encoding="utf-8")
     check("releaseKitBase" in sync and "releaseKitBase" in (COMMANDS / "git-commit.md").read_text(encoding="utf-8"),
           "git-commit records and git-sync reads branch.<name>.releaseKitBase")
+
+    mr = COMMANDS / "git-mr.md"
+    check(mr.is_file(), "commands/git-mr.md exists")
+    if mr.is_file():
+        mr_text = mr.read_text(encoding="utf-8")
+        check(categories_in(mr_text) == CATEGORIES, "git-mr.md lists the six changelog categories in order")
+        check("releaseKitBase" in mr_text, "git-mr reads branch.<name>.releaseKitBase")
 
 
 def extract(text, needle):
