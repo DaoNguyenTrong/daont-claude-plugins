@@ -66,6 +66,7 @@ Group changed files into logical commits:
 - Each group gets its own commit with a conventional commit message
 - Format: `<type>(<scope>): <short description>` — type is `feat|fix|refactor|chore|docs|style|test`
 - Focus on **why**, not **what**
+- Language: write every commit message, PR/MR title and description, and changelog entry in English, whatever language the user talks to you in.
 - Stage specific files per group: `git add <file1> <file2>`
 - If all changes are tightly related, a single commit is fine — don't split artificially
 - If there's a related plan file, include it in the commit

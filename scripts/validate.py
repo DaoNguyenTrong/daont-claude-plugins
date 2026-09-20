@@ -26,6 +26,8 @@ SKILL = PLUGIN / "skills" / "git-release" / "SKILL.md"
 COMMANDS = PLUGIN / "commands"
 SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
 CATEGORIES = ["Added", "Changed", "Deprecated", "Removed", "Fixed", "Security"]
+LANGUAGE_RULE = ("Language: write every commit message, PR/MR title and description, "
+                 "and changelog entry in English, whatever language the user talks to you in.")
 
 
 def categories_in(text):
@@ -194,6 +196,9 @@ def test_prompts():
     check("| `git-mr` | command |" in readme, "plugin README lists git-mr in the component table")
     check("merge_request_templates" in readme and "pull_request_template.md" in readme,
           "plugin README documents the GitLab and GitHub MR templates")
+
+    for path in (COMMANDS / "git-commit.md", COMMANDS / "git-mr.md", SKILL):
+        check(LANGUAGE_RULE in path.read_text(encoding="utf-8"), f"{path.name} carries the English-language rule")
 
 
 def extract(text, needle):

@@ -9,6 +9,8 @@ Automates the release workflow with CHANGELOG and git tag. **The git tag is the 
 
 Commands below assume a POSIX shell (bash, or Git Bash on Windows).
 
+Language: write every commit message, PR/MR title and description, and changelog entry in English, whatever language the user talks to you in. That covers the commits this skill makes (`chore: bump version`, `docs: update CHANGELOG`), the release and hotfix PR/MR titles and bodies, tag messages and the `## [vX.Y.Z]` entries.
+
 ## 0. Load project config — do this first, before any git command
 
 Read `.claude/release-kit.json` at the repository root.
@@ -597,4 +599,5 @@ Print:
 - This skill never merges `{{mainBranch}}` back into `{{devBranch}}`. Reconciling the two is the user's step after the release/hotfix ships; the skill only prints the reminder. Until then, `{{devBranch}}` is missing the stabilization fixes and hotfixes that landed on `{{mainBranch}}`.
 - Hotfix: never modify `{{devBranch}}`'s `[Unreleased]` section from the hotfix branch — insert the hotfix's own dated section instead. It reaches `{{devBranch}}` when the user merges `{{mainBranch}}` into it.
 - Hotfix branch name is cosmetic — only the git tag must be `vX.Y.Z`. Adopt any `hotfix/*` branch, but before merging always run the stateless base check (no commit shared with `origin/{{mainBranch}}..origin/{{devBranch}}`). A hotfix branch based on `{{devBranch}}` would ship unreleased work to production.
+- Everything this skill writes to git or the host is in English, even when the conversation is not (see the Language paragraph at the top).
 - If any step fails, stop and report — do not continue. Re-running the skill resumes safely (see *Resuming an interrupted release*).

@@ -85,6 +85,8 @@ git log --format='%h %s%n%b' origin/<base>..HEAD
 git diff --stat origin/<base>...HEAD
 ```
 
+Language: write every commit message, PR/MR title and description, and changelog entry in English, whatever language the user talks to you in. That covers the title and both sections below.
+
 **Title** — `<type>(<scope>): <short description>`, at most 72 characters. A single commit → reuse its subject. Several → one line that covers the change as a whole, using the type of the most significant commit (`feat|fix|refactor|chore|docs|style|test`).
 
 **Description** — exactly these two sections:
