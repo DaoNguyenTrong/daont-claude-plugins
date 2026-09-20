@@ -185,6 +185,7 @@ A PR/MR with no usable `## Changelog` section is never dropped silently: `git-re
 - The changelog follows [Keep a Changelog](https://keepachangelog.com/) with a `## [Unreleased]` heading (kept empty) and `## [vX.Y.Z] - date` headings, commits follow Conventional Commits, and every PR/MR description carries a `## Changelog` section.
 - Shell commands assume a POSIX shell (bash; Git Bash on Windows). The hotfix guard uses bash process substitution.
 - PR/MR automation covers GitHub and GitLab; every other host goes through `prCli: "none"`.
+- Everything the commands and the skill write to git or the host — commit messages, PR/MR titles and descriptions, changelog entries, tag messages — is in English, whatever language you talk to them in.
 - The skill is an LLM-executed prompt, not a script: it is deterministic where it runs git commands and depends on the model following the text elsewhere. The confirmation step and the git-verified checks exist for that reason.
 
 ## Updating
