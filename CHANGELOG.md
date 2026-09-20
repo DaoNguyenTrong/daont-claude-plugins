@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `git-mr` opens a PR/MR for your branch, with a `## Changelog` section drafted from your commits that the release changelog is built from.
+- `git-release` compiles the release changelog from the merged PRs/MRs and shows it for review before anything is written.
+- `git-release` requires `dev` to contain `main` before cutting a release, so the changelog on `dev` always has every released version.
+
+### Changed
+
+- `git-commit` no longer writes to `## [Unreleased]`; entries now come from PR/MR descriptions, so parallel branches no longer conflict on `CHANGELOG.md`. Add the `## Changelog` section to your PR/MR template when upgrading.
+- The release changelog is written on `release/vX.Y.Z` and dated on the day you ship, instead of being finalized on `dev` when the release branch is cut.
+- Entries left under `## [Unreleased]` are folded into the next release automatically.
+
 ## [v1.1.0] - 2026-09-19
 
 ### Added

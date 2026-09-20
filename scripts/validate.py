@@ -25,6 +25,19 @@ SCHEMA = PLUGIN / "release-kit.schema.json"
 SKILL = PLUGIN / "skills" / "git-release" / "SKILL.md"
 COMMANDS = PLUGIN / "commands"
 SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
+CATEGORIES = ["Added", "Changed", "Deprecated", "Removed", "Fixed", "Security"]
+
+
+def categories_in(text):
+    """The changelog categories a prompt declares on its 'Categories, in this order: ...' line."""
+    match = re.search(r"Categories, in this order: (.+?)\.", text)
+    return [c.strip() for c in match.group(1).split(",")] if match else None
+
+
+def sequential(section):
+    """True when the '#### N. ' step headings of a workflow section run 1..N."""
+    numbers = [int(n) for n in re.findall(r"^#### (\d+)\. ", section, flags=re.M)]
+    return bool(numbers) and numbers == list(range(1, len(numbers) + 1))
 
 failures = []
 
@@ -145,6 +158,43 @@ def test_prompts():
     check("releaseKitBase" in sync and "releaseKitBase" in (COMMANDS / "git-commit.md").read_text(encoding="utf-8"),
           "git-commit records and git-sync reads branch.<name>.releaseKitBase")
 
+    mr = COMMANDS / "git-mr.md"
+    check(mr.is_file(), "commands/git-mr.md exists")
+    if mr.is_file():
+        mr_text = mr.read_text(encoding="utf-8")
+        check(categories_in(mr_text) == CATEGORIES, "git-mr.md lists the six changelog categories in order")
+        check("releaseKitBase" in mr_text, "git-mr reads branch.<name>.releaseKitBase")
+
+    commit = (COMMANDS / "git-commit.md").read_text(encoding="utf-8")
+    check("Unreleased" not in commit and "changelogPath" not in commit, "git-commit no longer touches the changelog")
+    check("/git-mr" in commit, "git-commit points to /git-mr")
+
+    for name, (start, end) in {
+        "Phase 1": ("### Phase 1: Cut the release branch", "### Phase 2: Ship"),
+        "Phase 2": ("### Phase 2: Ship", "## Quick Release Workflow"),
+        "Quick release": ("## Quick Release Workflow", "## Hotfix Workflow"),
+    }.items():
+        section = skill.split(start, 1)[1].split(end, 1)[0]
+        check(sequential(section), f"SKILL.md {name}: numbered steps run 1..N without gaps")
+
+    cut = skill.find("#### 3. Cut the release branch")
+    compiled = skill.find("#### 4. Compile `{{changelogPath}}` on the release branch")
+    check(0 <= cut < compiled, "Phase 1 cuts the release branch (step 3) before compiling the changelog (step 4)")
+    reconcile = skill.find("#### 2. Reconcile with `{{mainBranch}}`")
+    sync = skill.find("#### 3. Sync `{{changelogPath}}`")
+    ship_gate = skill.find("#### 4. Run the gate — mandatory")
+    check(0 <= reconcile < sync < ship_gate, "Phase 2 syncs the changelog (step 3) after reconciling with main (step 2) and before the gate (step 4)")
+    writing = re.search(r"\*\*Writing the section:\*\*[^\n]*", skill)
+    check(writing is not None and "already exists" in writing.group(0) and "second heading" in writing.group(0),
+          "Collect changelog says what to do when the version section already exists")
+    check("Replace `## [Unreleased]` with" not in skill, "SKILL.md no longer promotes [Unreleased] on dev")
+    check("Do not edit this entry again on the release branch" not in skill, "SKILL.md no longer forbids writing the version section on release/*")
+
+    readme = (PLUGIN / "README.md").read_text(encoding="utf-8")
+    check("| `git-mr` | command |" in readme, "plugin README lists git-mr in the component table")
+    check("merge_request_templates" in readme and "pull_request_template.md" in readme,
+          "plugin README documents the GitLab and GitHub MR templates")
+
 
 def extract(text, needle):
     for line in text.splitlines():
@@ -220,6 +270,137 @@ def test_git_snippets():
         check(merged and unmerged, "merged check: release branch is merged into main, dev is not")
 
 
+def head(repo):
+    return subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True, check=True).stdout.strip()
+
+
+def test_changelog_snippets():
+    """Run the changelog-collection commands from the prompts against throwaway data."""
+    print("changelog snippets (from the prompts)")
+    skill = SKILL.read_text(encoding="utf-8")
+    check(categories_in(skill) == CATEGORIES, "SKILL.md lists the six changelog categories in order")
+    check(re.search(r"^### Collect changelog$", skill, flags=re.M) is not None, "SKILL.md has the shared 'Collect changelog' step")
+
+    ref_cmd = extract(skill, "grep -oE -m1")
+    awk_cmd = extract(skill, "awk 'tolower(")
+
+    messages = [
+        ("a GitLab merge commit", "Merge branch 'feature/x' into 'dev'\n\nfeat: add x\n\nSee merge request grp/sub/proj!123", "123"),
+        ("a GitHub merge commit", "Merge pull request #45 from owner/feature-x\n\nfeat: add x", "45"),
+        ("a GitHub squash subject", "feat(api): add x (#67)\n\nbody", "67"),
+        ("two references on one line", "feat: something (#12) (#99)", "12"),
+        ("a commit with no reference", "Merge branch 'release/v1.0.0' into 'dev'", ""),
+    ]
+    sections = [
+        ("between two headings", "## Summary\nwhy\n\n## Changelog\n- Added: A.\n- Fixed: B.\n\n## Test plan\nx\n", "- Added: A.\n- Fixed: B."),
+        ("any case, trailing spaces, none", "## Summary\nwhy\n\n## CHANGELOG  \nnone\n", "none"),
+        ("section is last in the description", "## Changelog\n- Added: A.\n", "- Added: A."),
+        ("no section", "## Summary\nwhy only\n", ""),
+        ("only the first section is used", "## Changelog\n- Added: first.\n## Other\n## Changelog\n- Added: second.\n", "- Added: first."),
+        ("HTML comment is passed through for the collector to ignore", "## Changelog\n<!-- one line per entry -->\n- Fixed: B.\n", "<!-- one line per entry -->\n- Fixed: B."),
+        ("CRLF line endings", "## Summary\r\nwhy\r\n\r\n## Changelog\r\n- Added: A.\r\n\r\n## Test plan\r\nx\r\n", "- Added: A."),
+    ]
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        repo = tmp / "r"
+        repo.mkdir()
+        git(repo, "init", "-q")
+        for k, v in (("user.email", "t@t"), ("user.name", "t")):
+            git(repo, "config", k, v)
+
+        for name, message, expected in messages:
+            (repo / "f").write_text(name)
+            git(repo, "add", "f")
+            git(repo, "commit", "-q", "-m", message)
+            out = bash(ref_cmd.replace("<sha>", head(repo)), repo)
+            check(out.stdout.strip() == expected, f"PR/MR number from {name}: got {out.stdout.strip()!r}, want {expected!r}")
+
+        for name, body, expected in sections:
+            path = tmp / "description.md"
+            path.write_text(body, encoding="utf-8")
+            out = bash(awk_cmd.replace("<description-file>", str(path)), repo)
+            check(out.stdout.replace("\r", "").strip() == expected, f"Changelog section cut from a description: {name}")
+
+
+def test_changelog_ranges():
+    """The revision ranges and the Cut pre-flight declared in the prompts select the right commits."""
+    print("changelog ranges (from the prompts)")
+    skill = SKILL.read_text(encoding="utf-8")
+    declared = set(re.findall(r"`<range>` = `([^`]+)`", skill))
+    expected = {
+        "<previous-tag>..origin/{{devBranch}}",
+        "<previous-tag>..<cut-point>",
+        "origin/{{devBranch}}..origin/release/vX.Y.Z",
+    }
+    check(declared == expected, f"SKILL.md declares exactly the three collection ranges: {sorted(declared)}")
+
+    list_cmd = extract(skill, "git rev-list --first-parent <range>")
+    cut_point_cmd = extract(skill, "git merge-base origin/{{devBranch}} origin/release/vX.Y.Z")
+    ancestor_cmd = extract(skill, "git merge-base --is-ancestor origin/{{mainBranch}} origin/{{devBranch}}")
+
+    def sub(text, cut_point=""):
+        return (text.replace("{{devBranch}}", "dev").replace("{{mainBranch}}", "main")
+                    .replace("<previous-tag>", "v1.0.0").replace("<cut-point>", cut_point)
+                    .replace("vX.Y.Z", "v1.1.0"))
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        git(tmp, "init", "-q", "--bare", "remote.git")
+        git(tmp, "clone", "-q", "remote.git", "w")
+        w = tmp / "w"
+        for k, v in (("user.email", "t@t"), ("user.name", "t")):
+            git(w, "config", k, v)
+
+        def commit(name):
+            (w / name).write_text(name)
+            git(w, "add", name)
+            git(w, "commit", "-qm", name)
+
+        def merge_pr(branch, into):
+            git(w, "checkout", "-q", into)
+            git(w, "merge", "-q", "--no-ff", branch, "-m", f"Merge branch '{branch}'")
+
+        def count(rng, cut_point=""):
+            out = bash(sub(list_cmd, cut_point).replace("<range>", sub(rng, cut_point)), w)
+            return len([line for line in out.stdout.splitlines() if line])
+
+        git(w, "checkout", "-q", "-b", "main"); commit("base"); git(w, "tag", "v1.0.0"); git(w, "push", "-q", "origin", "main")
+        git(w, "checkout", "-q", "-b", "dev"); git(w, "push", "-q", "origin", "dev")
+        for pr in ("f1", "f2"):
+            git(w, "checkout", "-q", "-b", pr, "dev"); commit(pr + "-a"); commit(pr + "-b")
+            merge_pr(pr, "dev")
+        commit("direct")
+        git(w, "checkout", "-q", "-b", "f4", "dev"); commit("f4-a"); commit("f4-b")
+        git(w, "checkout", "-q", "dev"); git(w, "merge", "-q", "--ff-only", "f4")
+        git(w, "push", "-q", "origin", "dev")
+        git(w, "checkout", "-q", "-b", "release/v1.1.0", "dev"); commit("changelog"); git(w, "push", "-q", "origin", "release/v1.1.0")
+        git(w, "fetch", "-q", "origin")
+
+        got = count("<previous-tag>..origin/{{devBranch}}")
+        check(got == 5, f"Cut range at cut time: one first-parent commit per merge-commit PR, plus the direct and fast-forwarded commits (got {got}, want 5)")
+
+        # dev moves on after the cut, and a fix PR is merged into the release branch
+        git(w, "checkout", "-q", "-b", "f3", "dev"); commit("f3-a"); merge_pr("f3", "dev"); git(w, "push", "-q", "origin", "dev")
+        git(w, "checkout", "-q", "-b", "fix1", "release/v1.1.0"); commit("fix1-a"); merge_pr("fix1", "release/v1.1.0")
+        git(w, "push", "-q", "origin", "release/v1.1.0")
+        git(w, "fetch", "-q", "origin")
+
+        cut_point = bash(sub(cut_point_cmd), w).stdout.strip()
+        check(cut_point != "", "the cut point (merge base of dev and the release branch) resolves")
+        got = count("<previous-tag>..origin/{{devBranch}}")
+        check(got == 6, f"plain dev range now includes the PR merged after the cut (got {got}, want 6) — why the merge base is needed")
+        got = count("<previous-tag>..<cut-point>", cut_point)
+        check(got == 5, f"Ship range up to the cut point leaves dev's later PR out (got {got}, want 5)")
+        got = count("origin/{{devBranch}}..origin/release/vX.Y.Z")
+        check(got == 2, f"Ship range for release-only commits: the changelog commit and the fix merge (got {got}, want 2)")
+
+        git(w, "checkout", "-q", "main"); commit("hotfix"); git(w, "push", "-q", "origin", "main"); git(w, "fetch", "-q", "origin")
+        check(bash(sub(ancestor_cmd), w).returncode != 0, "Cut pre-flight stops while main has commits that dev lacks")
+        git(w, "checkout", "-q", "dev"); git(w, "merge", "-q", "--no-edit", "origin/main"); git(w, "push", "-q", "origin", "dev"); git(w, "fetch", "-q", "origin")
+        check(bash(sub(ancestor_cmd), w).returncode == 0, "Cut pre-flight passes once dev contains main")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--tag", help="release tag; plugin.json version must match it")
@@ -229,6 +410,8 @@ def main():
     test_schema()
     test_prompts()
     test_git_snippets()
+    test_changelog_snippets()
+    test_changelog_ranges()
 
     print()
     if failures:
