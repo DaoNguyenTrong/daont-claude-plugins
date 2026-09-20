@@ -51,6 +51,7 @@ Hoặc `## Changelog` chỉ chứa `none` (không phân biệt hoa thường, ch
 Quy tắc parse (POSIX, không cần gawk):
 - Heading khớp: dòng `## Changelog` (không phân biệt hoa thường, cho phép khoảng trắng cuối). Mục kết thúc ở heading `## ` kế tiếp hoặc cuối mô tả. Chỉ dùng mục đầu tiên.
 - Dòng entry khớp `^- (Added|Changed|Deprecated|Removed|Fixed|Security): (.+)$` (category không phân biệt hoa thường, chuẩn hóa về dạng chuẩn). Mỗi entry đúng một dòng.
+- Dòng trống và chú thích HTML (`<!-- ... -->`) được bỏ qua, vì template MR dùng chú thích để hướng dẫn người viết.
 - Mục có nội dung không khớp entry lẫn `none`, hoặc MR không có mục → **thiếu** (mục 5.2 bước 5).
 
 ### 3.2 Khi nào ghi `none`
@@ -134,8 +135,8 @@ Thứ tự mới:
 
 Thêm bước **Sync changelog** ngay sau *Reconcile with main* (đánh số lại các bước sau; kiểm tra tham chiếu chéo của `validate.py` sẽ bắt tham chiếu sai):
 
-- Section `## [vX.Y.Z]` chưa có (Cut bị ngắt sau khi cắt nhánh) → chạy tổng hợp đầy đủ như Cut bước 4.
-- Đã có → chỉ tổng hợp MR đích `release/vX.Y.Z`: `range = origin/<dev>..origin/release/vX.Y.Z`, `target = release/vX.Y.Z`. Bỏ qua MR đã có ref trong section. Nhờ đó MR đích `main` (hotfix kéo vào qua Reconcile) tự bị loại vì có section riêng.
+- Section `## [vX.Y.Z]` chưa có (Cut bị ngắt sau khi cắt nhánh) → tổng hợp đầy đủ như Cut bước 4, nhưng với `range = <tag-trước>..<điểm-cut>`, trong đó `<điểm-cut>` là `git merge-base origin/<dev> origin/release/vX.Y.Z`. Không dùng `origin/<dev>` làm cận trên vì `dev` có thể đã nhận thêm MR sau lúc cut; các MR đó không thuộc release này.
+- Sau đó (luôn luôn) tổng hợp MR đích `release/vX.Y.Z`: `range = origin/<dev>..origin/release/vX.Y.Z`, `target = release/vX.Y.Z`. Bỏ qua MR đã có ref trong section. Nhờ đó MR đích `main` (hotfix kéo vào qua Reconcile) tự bị loại vì có section riêng.
 - Bỏ khỏi danh sách "commit không thuộc MR" các commit `docs: update CHANGELOG` do chính skill tạo và merge commit của Reconcile, vì chúng chỉ gây nhiễu.
 - MR không có mục Changelog bị hỏi lại ở mỗi lần chạy (không lưu trạng thái giữa các lần). MR có mục `none` hợp lệ nên không bị hỏi lại.
 - Đặt lại ngày trong heading thành ngày ship. Nếu có thay đổi, commit `docs: update CHANGELOG for vX.Y.Z` và push; nếu không thì bỏ qua.
