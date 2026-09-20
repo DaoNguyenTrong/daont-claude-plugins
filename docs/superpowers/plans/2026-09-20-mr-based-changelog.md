@@ -460,6 +460,7 @@ def test_changelog_snippets():
         ("no section", "## Summary\nwhy only\n", ""),
         ("only the first section is used", "## Changelog\n- Added: first.\n## Other\n## Changelog\n- Added: second.\n", "- Added: first."),
         ("HTML comment is passed through for the collector to ignore", "## Changelog\n<!-- one line per entry -->\n- Fixed: B.\n", "<!-- one line per entry -->\n- Fixed: B."),
+        ("CRLF line endings", "## Summary\r\nwhy\r\n\r\n## Changelog\r\n- Added: A.\r\n\r\n## Test plan\r\nx\r\n", "- Added: A."),
     ]
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -481,7 +482,7 @@ def test_changelog_snippets():
             path = tmp / "description.md"
             path.write_text(body, encoding="utf-8")
             out = bash(awk_cmd.replace("<description-file>", str(path)), repo)
-            check(out.stdout.strip() == expected, f"Changelog section cut from a description: {name}")
+            check(out.stdout.replace("\r", "").strip() == expected, f"Changelog section cut from a description: {name}")
 
 
 def main():
@@ -557,7 +558,7 @@ Keep only PRs/MRs that are **merged** and whose base branch is `<target>`. That 
 **5. Read each `## Changelog` section.** Save the description to a file and cut the section out — it starts at a `## Changelog` heading (any case) and ends at the next `## ` heading:
 
 ```bash
-awk 'tolower($0) ~ /^## +changelog[ \t]*$/ {f=1; next} f && /^## / {exit} f' <description-file>
+awk 'tolower($0) ~ /^## +changelog[ \t\r]*$/ {f=1; next} f && /^## / {exit} f' <description-file>
 ```
 
 Ignore blank lines and HTML comments (`<!-- ... -->`). Every other line must match `- <Category>: <sentence>` (category in any case), or the whole section must be just `none` (any case, optional trailing period). Anything else, or no section at all, puts the PR/MR on the list of PRs/MRs with no usable Changelog section.
@@ -574,7 +575,7 @@ Ignore blank lines and HTML comments (`<!-- ... -->`). Every other line must mat
 - [ ] **Step 4: Chạy để xác nhận đạt**
 
 Run: `python3 scripts/validate.py 2>&1 | grep -E 'changelog|Changelog|PR/MR number|FAIL|passed|failed'`
-Expected: `ok    SKILL.md lists the six changelog categories in order`, `ok    SKILL.md has the shared 'Collect changelog' step`, năm dòng `ok    PR/MR number from ...` (`123`, `45`, `67`, `12`, rỗng), sáu dòng `ok    Changelog section cut from a description: ...`, và `all checks passed` (gồm cả kiểm tra tham chiếu chéo: `*Manual collection*` phải phân giải được).
+Expected: `ok    SKILL.md lists the six changelog categories in order`, `ok    SKILL.md has the shared 'Collect changelog' step`, năm dòng `ok    PR/MR number from ...` (`123`, `45`, `67`, `12`, rỗng), bảy dòng `ok    Changelog section cut from a description: ...`, và `all checks passed` (gồm cả kiểm tra tham chiếu chéo: `*Manual collection*` phải phân giải được).
 
 - [ ] **Step 5: Commit**
 

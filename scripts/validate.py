@@ -266,6 +266,7 @@ def test_changelog_snippets():
         ("no section", "## Summary\nwhy only\n", ""),
         ("only the first section is used", "## Changelog\n- Added: first.\n## Other\n## Changelog\n- Added: second.\n", "- Added: first."),
         ("HTML comment is passed through for the collector to ignore", "## Changelog\n<!-- one line per entry -->\n- Fixed: B.\n", "<!-- one line per entry -->\n- Fixed: B."),
+        ("CRLF line endings", "## Summary\r\nwhy\r\n\r\n## Changelog\r\n- Added: A.\r\n\r\n## Test plan\r\nx\r\n", "- Added: A."),
     ]
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -287,7 +288,7 @@ def test_changelog_snippets():
             path = tmp / "description.md"
             path.write_text(body, encoding="utf-8")
             out = bash(awk_cmd.replace("<description-file>", str(path)), repo)
-            check(out.stdout.strip() == expected, f"Changelog section cut from a description: {name}")
+            check(out.stdout.replace("\r", "").strip() == expected, f"Changelog section cut from a description: {name}")
 
 
 def main():

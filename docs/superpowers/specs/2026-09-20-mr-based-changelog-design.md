@@ -114,7 +114,7 @@ glab mr update <iid> --title "<title>" --description "$(cat <file>)"
 4. **Lấy chi tiết và lọc**: `gh pr view <N> --json number,title,body,baseRefName,state,url` hoặc `glab mr view <N> -F json`. Giữ MR đã merge và có nhánh đích đúng `target`. Bước lọc này loại các fix từ `release/*` đã vào bản trước rồi mới được merge ngược về `dev`. Hệ quả có chủ ý: MR đích là QA branch (`qaBranches`) không được thu thập ở spec này (xem mục 12a).
 5. **Parse mục `## Changelog`** theo mục 3.1:
    ```bash
-   awk 'tolower($0) ~ /^## +changelog[ \t]*$/ {f=1; next} f && /^## / {exit} f' <file-mô-tả>
+   awk 'tolower($0) ~ /^## +changelog[ \t\r]*$/ {f=1; next} f && /^## / {exit} f' <file-mô-tả>
    ```
 6. **Lắp bản nháp**: sắp theo thứ tự category Keep a Changelog; trong category theo thứ tự merge (cũ trước); khử trùng entry giống nhau (gộp ref: `(!12, !15)`); chuẩn hóa giọng văn; thêm ref MR cuối dòng. Gộp cả entry cũ trong `## [Unreleased]` (từ flow v1, không có ref) rồi để trống `[Unreleased]`.
 7. **Cổng duyệt** (một lần): hiện bản nháp, danh sách MR thiếu mục Changelog và commit không thuộc MR. Với mỗi MR thiếu, người dùng chọn: nhập entry, `none`, hoặc bỏ qua. Có thêm lựa chọn một phím "dùng tiêu đề MR làm entry" (`feat`→Added, `fix`→Fixed, `refactor`/`perf`/`chore` bỏ qua trừ khi người dùng chỉ định), chỉ áp khi người dùng chọn, không bao giờ tự động; mục đích là giai đoạn chuyển đổi khi các MR cũ chưa có mục Changelog. Chỉ ghi file sau khi người dùng xác nhận.

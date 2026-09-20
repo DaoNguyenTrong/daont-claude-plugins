@@ -208,7 +208,7 @@ Keep only PRs/MRs that are **merged** and whose base branch is `<target>`. That 
 **5. Read each `## Changelog` section.** Save the description to a file and cut the section out — it starts at a `## Changelog` heading (any case) and ends at the next `## ` heading:
 
 ```bash
-awk 'tolower($0) ~ /^## +changelog[ \t]*$/ {f=1; next} f && /^## / {exit} f' <description-file>
+awk 'tolower($0) ~ /^## +changelog[ \t\r]*$/ {f=1; next} f && /^## / {exit} f' <description-file>
 ```
 
 Ignore blank lines and HTML comments (`<!-- ... -->`). Every other line must match `- <Category>: <sentence>` (category in any case), or the whole section must be just `none` (any case, optional trailing period). Anything else, or no section at all, puts the PR/MR on the list of PRs/MRs with no usable Changelog section.
