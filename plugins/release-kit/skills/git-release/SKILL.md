@@ -219,7 +219,7 @@ Ignore blank lines and HTML comments (`<!-- ... -->`). Every other line must mat
 
 **Manual collection** (no API access): take the PR/MR numbers from the commit-message pattern in step 3, list them, and ask the user to paste each one's `## Changelog` section — or to accept the commit subjects as a draft. Then continue at step 6. In Phase 2 there is no way to filter by `<target>`: list the PRs/MRs found in `<range>` and ask, one by one, whether the section already covers it.
 
-**Writing the section:** insert `## [vX.Y.Z] - YYYY-MM-DD` directly below `## [Unreleased]` (add that heading if it is missing, and leave it empty), with one `### <Category>` block for each non-empty category.
+**Writing the section:** if there is no `## [vX.Y.Z]` section yet, insert `## [vX.Y.Z] - YYYY-MM-DD` directly below `## [Unreleased]` (add that heading if it is missing, and leave it empty), with one `### <Category>` block for each non-empty category. If the section already exists (Phase 2 step 3 runs this step on a section that Phase 1 wrote), never insert a second heading: add each new entry to its `### <Category>` block, creating a missing block in the category order above, and skip entries whose reference is already there.
 
 ### Confirm before shipping
 
@@ -587,8 +587,8 @@ Print:
 - Never force push. Never bypass branch protection (`--admin`, `--no-verify`, force flags).
 - Config first: if `.claude/release-kit.json` is missing or invalid, STOP and ask — never guess bindings.
 - Never skip the gate: Standard Phase 1's run is fail-fast (report and stop, but its absence alone doesn't block a later Phase 2). Standard Phase 2's, Quick release's, and the hotfix's are the mandatory gate — a failure blocks the release (no PR/MR, no merge).
-- Never skip the CHANGELOG compilation (Phase 1 step 4, Phase 2 step 3, Quick step 4, Hotfix step 3) or its review gate.
-- The `## [vX.Y.Z]` section on `release/*` is written only by this skill (Phase 1 step 4 and Phase 2 step 3). Stabilization fixes reach it through the `## Changelog` section of their PR/MR (`git-mr`), never by hand-editing.
+- Never skip the CHANGELOG compilation (Phase 1 step 4, Phase 2 step 3, Quick step 4) or its review gate. A hotfix writes its own dated section (Hotfix step 3).
+- The `## [vX.Y.Z]` section on `release/*` is written only by this skill (Phase 1 step 4 and Phase 2 step 3). Stabilization fixes reach it through the `## Changelog` section of their PR/MR (`git-mr`), never by hand-editing. The one exception is resolving a CHANGELOG merge conflict in Phase 2 step 2 (reconcile with `{{mainBranch}}`).
 - Confirm with the user before the PR/MR merge and tag — they are the steps this skill cannot undo.
 - Never tag until the merge is verified (`git merge-base --is-ancestor`), and never move or delete an existing tag.
 - The git tag is the version — there is no backend version file. Only bump the files listed in `{{versionFiles}}`.

@@ -31,14 +31,14 @@ Then create `.claude/release-kit.json` (see below) and remove any project-local
 
 Schema: [`release-kit.schema.json`](./release-kit.schema.json). Required: `prCli`, `gate`, `modes`.
 
-`git-release` needs the file and stops without it. `git-commit` and `git-sync` read it when it exists and fall back to the defaults below when it does not.
+`git-release` needs the file and stops without it. `git-commit`, `git-mr` and `git-sync` read it when it exists and fall back to the defaults below when it does not.
 
 | Field | Meaning | Default |
 | --- | --- | --- |
 | `prCli` | `gh`, `glab`, or `none` — `none` works with any host: the skill prints the title/body, you open and merge the PR/MR (merge commit) in the UI, and it verifies the merge with git before tagging | — |
 | `remote` | git remote used for every fetch/push/tag | `origin` |
 | `devBranch` / `mainBranch` | integration branch / production branch | `dev` / `main` |
-| `qaBranches` | long-lived QA branches; `git-commit` cuts `fix/*` from them, `git-sync` rebases those back onto them | `["testing", "staging"]` |
+| `qaBranches` | long-lived QA branches; `git-commit` cuts `fix/*` from them, `git-mr` refuses to open a PR/MR from them and can target them, `git-sync` rebases those back onto them | `["testing", "staging"]` |
 | `tagPrefix` | prefix of tags, `release/*` branches and changelog headings (`""` for bare tags such as MinVer's default) | `v` |
 | `tagAnnotated` | `true` creates annotated tags (`git tag -a`) | `false` |
 | `versioningNote` | one line on how the version is derived (echoed in summaries) | omitted |

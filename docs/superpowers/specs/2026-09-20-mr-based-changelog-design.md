@@ -155,7 +155,7 @@ Diff `CHANGELOG.md` trong MR release (`release/vX.Y.Z → main`) là bước "Re
 ### 5.6 Quy tắc phải sửa
 
 - `SKILL.md:258` ("Do not edit this entry again on the release branch") → đảo lại: section `## [vX.Y.Z]` trên `release/*` chỉ do skill ghi (Cut và Ship); MR sửa lỗi đóng góp qua mục `## Changelog` của chúng, không sửa tay.
-- `SKILL.md:536-543` cập nhật cho khớp (Hotfix vẫn không đụng `[Unreleased]` của `dev`, nhưng phần này giờ luôn rỗng).
+- `SKILL.md:536-543` cập nhật cho khớp (Hotfix vẫn không đụng `[Unreleased]` của `dev`, nhưng phần này giờ luôn rỗng). Ghi chú khi triển khai: câu chữ hiện có của Hotfix vẫn đúng dưới flow mới nên được giữ nguyên, không sửa.
 - Frontmatter `description` và bảng *Modes*: thay "finalize CHANGELOG on dev" bằng "compile CHANGELOG on the release branch".
 
 ## 6. `git-commit`

@@ -180,7 +180,13 @@ def test_prompts():
     cut = skill.find("#### 3. Cut the release branch")
     compiled = skill.find("#### 4. Compile `{{changelogPath}}` on the release branch")
     check(0 <= cut < compiled, "Phase 1 cuts the release branch (step 3) before compiling the changelog (step 4)")
-    check(re.search(r"^#### \d+\. Sync `\{\{changelogPath\}\}`$", skill, flags=re.M) is not None, "Phase 2 has a step that syncs the changelog")
+    reconcile = skill.find("#### 2. Reconcile with `{{mainBranch}}`")
+    sync = skill.find("#### 3. Sync `{{changelogPath}}`")
+    ship_gate = skill.find("#### 4. Run the gate — mandatory")
+    check(0 <= reconcile < sync < ship_gate, "Phase 2 syncs the changelog (step 3) after reconciling with main (step 2) and before the gate (step 4)")
+    writing = re.search(r"\*\*Writing the section:\*\*[^\n]*", skill)
+    check(writing is not None and "already exists" in writing.group(0) and "second heading" in writing.group(0),
+          "Collect changelog says what to do when the version section already exists")
     check("Replace `## [Unreleased]` with" not in skill, "SKILL.md no longer promotes [Unreleased] on dev")
     check("Do not edit this entry again on the release branch" not in skill, "SKILL.md no longer forbids writing the version section on release/*")
 
