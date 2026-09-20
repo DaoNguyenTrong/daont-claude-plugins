@@ -184,6 +184,11 @@ def test_prompts():
     check("Replace `## [Unreleased]` with" not in skill, "SKILL.md no longer promotes [Unreleased] on dev")
     check("Do not edit this entry again on the release branch" not in skill, "SKILL.md no longer forbids writing the version section on release/*")
 
+    readme = (PLUGIN / "README.md").read_text(encoding="utf-8")
+    check("| `git-mr` | command |" in readme, "plugin README lists git-mr in the component table")
+    check("merge_request_templates" in readme and "pull_request_template.md" in readme,
+          "plugin README documents the GitLab and GitHub MR templates")
+
 
 def extract(text, needle):
     for line in text.splitlines():

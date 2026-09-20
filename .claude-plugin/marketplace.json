@@ -10,7 +10,7 @@
     {
       "name": "release-kit",
       "source": "./plugins/release-kit",
-      "description": "Release workflow shared across projects: git-release skill (driven by a per-project .claude/release-kit.json), plus git-commit and git-sync commands.",
+      "description": "Release workflow shared across projects: git-release skill (driven by a per-project .claude/release-kit.json), plus git-commit, git-mr and git-sync commands.",
       "category": "workflow"
     }
   ]
