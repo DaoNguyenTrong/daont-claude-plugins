@@ -117,11 +117,11 @@ glab mr update <iid> --title "<title>" --description "$(cat <file>)"            
 
 ### 9. Finish
 
-Print the PR/MR URL. Remind the user: after it is merged, run `/git-sync`, then delete the local branch (`git branch -d <current>`).
+Print the PR/MR URL. Say how it gets merged: if the change is docs-only and the project provides a gated merge command (for example `/git-accept`), run that command; otherwise review and merge belong to the team's process. After it is merged, run `/git-sync`, then delete the local branch (`git branch -d <current>`).
 
 ## Rules
 
-- Never merge the PR/MR — review and merge belong to the team's process
+- Never merge the PR/MR from this command — merging happens only through the project's gated merge path or by the team's review process
 - Never force push and never bypass branch protection
 - Never open a PR/MR from the integration, production, QA, `release/*` or `hotfix/*` branches
 - If any step fails, stop and report
