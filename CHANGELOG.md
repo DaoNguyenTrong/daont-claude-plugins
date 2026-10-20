@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [v2.0.1] - 2026-10-20
+
+### Changed
+
+- `git-mr` describes the gated merge path for docs-only PRs/MRs instead of a blanket "never merge" rule, so the command's instructions match how projects actually merge.
+
 ## [v2.0.0] - 2026-09-20
 
 ### Added
