@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [v2.0.2] - 2026-10-22
+
+### Added
+
+- `git-mr` adds project-defined description sections after Review through `prExtraSections`. (#10)
+- `git-sync` and `git-mr` push a rebased work branch with a lease on its previous head (`pushAfterRebase`). (#10)
+- `git-release` routes every change to `dev` through PRs/MRs and leaves merging them to a gated command (`devWrites`, `devMergeCommand`). (#10)
+- `git-commit` commits only the paths passed, and otherwise flags changes that look unrelated before committing. (#10)
+
+### Changed
+
+- `git-commit` named a branch cut from `dev` `feature/`, `fix/` or `chore/` by change type instead of always `feature/` (`branchPrefixes`). (#10)
+
 ## [v2.0.1] - 2026-10-20
 
 ### Changed
