@@ -126,7 +126,7 @@ Print:
 - Base branch used (and how it was chosen: argument, recorded, by name, or by distance)
 - Number of new commits pulled
 - Whether stash was applied
-- With `pushAfterRebase` set to `force-with-lease`: whether the branch was pushed, and the `<pre-rebase sha>` (a later `/git-mr` needs it if it did not push)
+- With `pushAfterRebase` set to `force-with-lease`: whether the branch was pushed; if it was not and step 3's ancestor check exited 0, the `<pre-rebase sha>` for a later `/git-mr` (never report it when the check failed)
 - Current status (`git status --short`)
 
 ## Rules

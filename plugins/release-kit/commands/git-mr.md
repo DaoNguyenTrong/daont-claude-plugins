@@ -102,7 +102,7 @@ Print the target branch, the title and the description, and ask once: create (or
 
 ### 7. Push
 
-`git push -u origin <current>`. A rejection (for example non-fast-forward after a rebase) → stop and report. Never force push. **Exception:** with `pushAfterRebase` set to `force-with-lease`, a non-fast-forward rejection on a branch this session just rebased onto `<base>` (`/git-sync`) may be pushed with `git push --force-with-lease=<current>:<pre-rebase sha> origin <current>`, using the remote sha captured before that rebase — never the `origin/<current>` from this command's own fetch. No such sha → stop and report.
+`git push -u origin <current>`. A rejection (for example non-fast-forward after a rebase) → stop and report. Never force push. **Exception:** with `pushAfterRebase` set to `force-with-lease`, a non-fast-forward rejection on a branch this session just rebased onto `<base>` (`/git-sync`) may be pushed with `git push --force-with-lease=<current>:<pre-rebase sha> origin <current>`, using the pre-rebase sha `/git-sync` reported (it reports one only when the remote held nothing the local branch lacked) — never the `origin/<current>` from this command's own fetch. No such sha → stop and report.
 
 ### 8. Create or update the PR/MR
 

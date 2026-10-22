@@ -260,7 +260,7 @@ git push -u origin chore/release-vX.Y.Z-changelog
 
 Then run *Open and merge the PR/MR* with source = that branch, target = `{{devBranch}}`, title = the commit subject, deleting the source branch. Once merged, `git checkout {{devBranch}} && git pull --ff-only` and continue the workflow from the step after the push.
 
-**With `{{devWrites}}` = `pr`** this is the only path, not a fallback: Quick release never pushes to `{{devBranch}}`. It runs the steps above once, after Quick step 5, and the branch carries every commit steps 4 and 5 made (CHANGELOG and version bump; title = the first commit's subject). Once merged, continue at Quick step 6. If the skill stops before the merge (`{{devMergeCommand}}`, `prCli` `none`, a refused merge), tell the user how to resume: once it is merged, `git checkout {{devBranch}} && git pull --ff-only`, then the same request again (e.g. `quick vX.Y.Z`).
+**With `{{devWrites}}` = `pr`** this is the only path, not a fallback: Quick release never pushes to `{{devBranch}}`. It runs the steps above once, after Quick step 5, and the branch carries every commit steps 4 and 5 made (CHANGELOG and version bump; title = the first commit's subject). Once merged — including when its *Already merged?* check finds it merged — `git checkout {{devBranch}} && git pull --ff-only` and continue at Quick step 6, never at the tag step. If the skill stops before the merge (`{{devMergeCommand}}`, `prCli` `none`, a refused merge), tell the user how to resume: once it is merged, `git checkout {{devBranch}} && git pull --ff-only`, then the same request again (e.g. `quick vX.Y.Z`).
 
 ### Reconcile PR/MR
 
@@ -478,7 +478,7 @@ git commit -m "docs: update CHANGELOG for vX.Y.Z"
 git push origin {{devBranch}}
 ```
 
-With `{{devWrites}}` = `pr`: first run `git ls-remote --exit-code --heads origin chore/release-vX.Y.Z-changelog` — exit 0 means an earlier run already opened that PR/MR, so skip steps 4 and 5 and resume at its *Open and merge the PR/MR* step (*Protected branch fallback*). Otherwise commit as above but do not push; step 5 sends the commit.
+With `{{devWrites}}` = `pr`: first run `git ls-remote --exit-code --heads origin chore/release-vX.Y.Z-changelog` — exit 0 means an earlier run already opened that PR/MR, so skip steps 4 and 5 and resume at its *Open and merge the PR/MR* step (*Protected branch fallback*); once it is merged, `git checkout {{devBranch}} && git pull --ff-only` and go on to step 6 — never to the tag step. Otherwise commit as above but do not push; step 5 sends the commit.
 
 #### 5. Bump version files
 
