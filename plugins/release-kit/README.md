@@ -39,6 +39,7 @@ Schema: [`release-kit.schema.json`](./release-kit.schema.json). Required: `prCli
 | `remote` | git remote used for every fetch/push/tag | `origin` |
 | `devBranch` / `mainBranch` | integration branch / production branch | `dev` / `main` |
 | `qaBranches` | long-lived QA branches; `git-commit` cuts `fix/*` from them, `git-mr` refuses to open a PR/MR from them and can target them, `git-sync` rebases those back onto them | `["testing", "staging"]` |
+| `prExtraSections` | extra `## <heading>` sections `git-mr` adds after Review, in order, filled from the branch and session (`None` when nothing applies) | none |
 | `tagPrefix` | prefix of tags, `release/*` branches and changelog headings (`""` for bare tags such as MinVer's default) | `v` |
 | `tagAnnotated` | `true` creates annotated tags (`git tag -a`) | `false` |
 | `versioningNote` | one line on how the version is derived (echoed in summaries) | omitted |
@@ -147,9 +148,9 @@ feature/* or fix/*  --/git-mr-->  PR/MR with a "## Changelog" section  --merge--
 
 Or just `none` when a reader of the changelog would not care. Categories are Added, Changed, Deprecated, Removed, Fixed, Security. A fix for a bug that never shipped in a released version is `none` — readers never saw the bug. `git-mr` drafts the section from your commits and asks before it opens the PR/MR.
 
-**The `## Review` checklist** tells the reviewer what was verified. `git-mr` ticks a box only for a fact it checked in that run — up to date with the base, everything committed, tests passed on this exact commit — and otherwise leaves `[ ]` with the reason. `Breaking change` and `Look at` are always left for the reviewer. The whole description stays within 15 lines.
+**The `## Review` checklist** tells the reviewer what was verified. `git-mr` ticks a box only for a fact it checked in that run — up to date with the base, everything committed, tests passed on this exact commit — and otherwise leaves `[ ]` with the reason. `Breaking change` and `Look at` are always left for the reviewer. The whole description stays within 15 lines; sections a project adds through `prExtraSections` come after Review and do not count toward that cap.
 
-**MR templates.** Add the three sections to your PR/MR template so nobody has to remember the format:
+**MR templates.** Add the three sections (and any `prExtraSections` headings) to your PR/MR template so nobody has to remember the format:
 
 - GitLab: `.gitlab/merge_request_templates/Default.md`
 - GitHub: `.github/pull_request_template.md`

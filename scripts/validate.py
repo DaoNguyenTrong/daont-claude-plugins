@@ -106,6 +106,7 @@ def test_schema():
         ("versionFiles", {**base, "versionFiles": [{"path": "package.json", "bumpCmd": "x {version}"}]}),
         ("legacy frontendVersionFile", {**base, "frontendVersionFile": "a/package.json"}),
         ("qaBranches", {**base, "qaBranches": ["qa"]}),
+        ("prExtraSections", {**base, "prExtraSections": ["Test plan", "Risks"]}),
     ]
     bad = [
         ("unknown key", {**base, "devbranch": "dev"}),
@@ -117,6 +118,8 @@ def test_schema():
         ("versionFiles entry without path", {**base, "versionFiles": [{"bumpCmd": "x"}]}),
         ("unknown gate key", {**base, "gate": {"mandatory": "true", "phase2": "x"}}),
         ("bad tagPrefix", {**base, "tagPrefix": "v 1"}),
+        ("prExtraSections not a list", {**base, "prExtraSections": "Test plan"}),
+        ("prExtraSections empty heading", {**base, "prExtraSections": [""]}),
     ]
     for name, doc in good:
         check(validator.is_valid(doc), f"accepts: {name}")

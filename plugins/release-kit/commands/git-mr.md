@@ -17,6 +17,7 @@ If `.claude/release-kit.json` exists and parses, read it. **This command never s
 | Integration branch | `devBranch` | whichever of `dev` / `develop` exists on the remote |
 | Production branch | `mainBranch` | `main`, else `master` |
 | QA branches | `qaBranches` | `testing`, `staging` |
+| Extra description sections | `prExtraSections` | none |
 
 `origin` below stands for the configured remote. If `prCli` is `gh` or `glab` but that CLI is not installed or not logged in (`gh auth status` / `glab auth status` fails), continue in **manual mode**: do every step except creating the PR/MR, then print the title and description for the user to paste into the host's web UI.
 
@@ -67,7 +68,7 @@ Language: write every commit message, PR/MR title and description, and changelog
 
 **Title** — `<type>(<scope>): <short description>`, at most 72 characters. A single commit → reuse its subject. Several → one line covering the change as a whole, with the type of the most significant commit (`feat|fix|refactor|chore|docs|style|test`).
 
-**Description** — at most 15 lines, exactly these three sections and nothing else (more detail goes in a comment):
+**Description** — at most 15 lines, exactly these three sections and nothing else (more detail goes in a comment). With `prExtraSections` set, add one `## <heading>` per entry after Review, in that order, filled from what the branch, commits and session show — `None` when nothing applies, never invented; the 15-line cap covers only the three standard sections:
 
 ```markdown
 ## Summary
