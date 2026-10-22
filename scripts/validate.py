@@ -106,6 +106,10 @@ def test_schema():
         ("versionFiles", {**base, "versionFiles": [{"path": "package.json", "bumpCmd": "x {version}"}]}),
         ("legacy frontendVersionFile", {**base, "frontendVersionFile": "a/package.json"}),
         ("qaBranches", {**base, "qaBranches": ["qa"]}),
+        ("prExtraSections", {**base, "prExtraSections": ["Test plan", "Risks"]}),
+        ("pushAfterRebase force-with-lease", {**base, "pushAfterRebase": "force-with-lease"}),
+        ("devWrites pr + devMergeCommand", {**base, "devWrites": "pr", "devMergeCommand": "/git-accept"}),
+        ("branchPrefixes partial", {**base, "branchPrefixes": {"fix": "bugfix"}}),
     ]
     bad = [
         ("unknown key", {**base, "devbranch": "dev"}),
@@ -117,6 +121,13 @@ def test_schema():
         ("versionFiles entry without path", {**base, "versionFiles": [{"bumpCmd": "x"}]}),
         ("unknown gate key", {**base, "gate": {"mandatory": "true", "phase2": "x"}}),
         ("bad tagPrefix", {**base, "tagPrefix": "v 1"}),
+        ("prExtraSections not a list", {**base, "prExtraSections": "Test plan"}),
+        ("prExtraSections empty heading", {**base, "prExtraSections": [""]}),
+        ("pushAfterRebase force", {**base, "pushAfterRebase": "force"}),
+        ("unknown devWrites", {**base, "devWrites": "direct"}),
+        ("empty devMergeCommand", {**base, "devMergeCommand": ""}),
+        ("unknown branchPrefixes key", {**base, "branchPrefixes": {"feat": "feat"}}),
+        ("branchPrefixes value with a slash", {**base, "branchPrefixes": {"feature": "feature/"}}),
     ]
     for name, doc in good:
         check(validator.is_valid(doc), f"accepts: {name}")
@@ -280,6 +291,45 @@ def test_git_snippets():
         unmerged = bash("git merge-base --is-ancestor origin/dev origin/main", w).returncode != 0
         check(merged and unmerged, "merged check: release branch is merged into main, dev is not")
 
+        # pushAfterRebase "force-with-lease" (git-sync step 3 and 4)
+        sync_md = (COMMANDS / "git-sync.md").read_text(encoding="utf-8")
+        lease_sha = extract(sync_md, "git rev-parse origin/<current>")
+        lease_ok = extract(sync_md, "git merge-base --is-ancestor origin/<current> HEAD")
+        lease_push = extract(sync_md, "git push --force-with-lease=<current>:<pre-rebase sha> origin <current>")
+        sub = lambda cmd, sha="": cmd.replace("<current>", "feature/p").replace("<pre-rebase sha>", sha)
+        git(tmp, "clone", "-q", "remote.git", "t")
+        t = tmp / "t"
+        for k, v in (("user.email", "t@t"), ("user.name", "t")):
+            git(t, "config", k, v)
+
+        def advance(repo, branch, name):
+            git(repo, "fetch", "-q", "origin"); git(repo, "checkout", "-q", "-B", branch, f"origin/{branch}")
+            (repo / name).write_text(name); git(repo, "add", name); git(repo, "commit", "-qm", name)
+            git(repo, "push", "-q", "origin", branch)
+
+        def rebase_and_push(fetch_first):
+            if fetch_first:
+                git(w, "fetch", "-q", "origin")
+            sha = bash(sub(lease_sha), w).stdout.strip()
+            ok = bash(sub(lease_ok), w).returncode == 0
+            git(w, "rebase", "-q", "origin/dev")
+            return sha, ok
+
+        git(w, "checkout", "-q", "-b", "feature/p", "origin/dev"); commit("p1"); git(w, "push", "-q", "origin", "feature/p")
+        advance(t, "dev", "d3"); git(w, "fetch", "-q", "origin")
+        sha, ok = rebase_and_push(fetch_first=False)
+        pushed = bash(sub(lease_push, sha), w).returncode == 0
+        check(ok and pushed, "force-with-lease: a rebased work branch is pushed against its pre-rebase remote sha")
+
+        advance(t, "feature/p", "p-teammate"); git(w, "fetch", "-q", "origin")
+        check(bash(sub(lease_ok), w).returncode != 0, "force-with-lease: the ancestor check flags commits someone else pushed")
+
+        git(w, "reset", "-q", "--hard", "origin/feature/p"); advance(t, "dev", "d4"); git(w, "fetch", "-q", "origin")
+        sha = bash(sub(lease_sha), w).stdout.strip()
+        advance(t, "feature/p", "p-late")            # lands after the sha was captured, before the push
+        git(w, "rebase", "-q", "origin/dev")
+        check(bash(sub(lease_push, sha), w).returncode != 0, "force-with-lease: the push is rejected when the remote moved after the sha was captured")
+
 
 def head(repo):
     return subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True, check=True).stdout.strip()
@@ -410,6 +460,21 @@ def test_changelog_ranges():
         check(bash(sub(ancestor_cmd), w).returncode != 0, "Cut pre-flight stops while main has commits that dev lacks")
         git(w, "checkout", "-q", "dev"); git(w, "merge", "-q", "--no-edit", "origin/main"); git(w, "push", "-q", "origin", "dev"); git(w, "fetch", "-q", "origin")
         check(bash(sub(ancestor_cmd), w).returncode == 0, "Cut pre-flight passes once dev contains main")
+
+        # devWrites "pr": the Reconcile PR/MR branch, merged as a PR into dev, satisfies the Cut pre-flight
+        pending = extract(skill, "git rev-list --count origin/{{devBranch}}..origin/{{mainBranch}}")
+        cut_branch = extract(skill, "git checkout -b chore/reconcile-main-vX.Y.Z origin/{{devBranch}}")
+        merge_main = extract(skill, "git merge --no-ff origin/{{mainBranch}} -m")
+        check(bash(sub(pending), w).stdout.strip() == "0", "Reconcile PR/MR is skipped when dev already contains main")
+        git(w, "checkout", "-q", "main"); commit("hotfix2"); git(w, "push", "-q", "origin", "main"); git(w, "fetch", "-q", "origin")
+        check(bash(sub(pending), w).stdout.strip() != "0", "Reconcile PR/MR runs when main has commits dev lacks")
+        for cmd in (cut_branch, merge_main):
+            out = bash(sub(cmd), w)
+            check(out.returncode == 0, f"Reconcile PR/MR command runs: {sub(cmd).split('#')[0].strip()}")
+        git(w, "checkout", "-q", "dev"); git(w, "pull", "-q", "--ff-only", "origin", "dev")
+        git(w, "merge", "-q", "--no-ff", "chore/reconcile-main-v1.1.0", "-m", "Merge pull request #99"); git(w, "push", "-q", "origin", "dev")
+        git(w, "fetch", "-q", "origin")
+        check(bash(sub(ancestor_cmd), w).returncode == 0, "Cut pre-flight passes once the Reconcile PR/MR is merged into dev")
 
 
 def main():

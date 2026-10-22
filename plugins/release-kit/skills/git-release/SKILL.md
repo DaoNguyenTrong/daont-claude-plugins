@@ -16,15 +16,15 @@ Language: write every commit message, PR/MR title and description, and changelog
 Read `.claude/release-kit.json` at the repository root.
 
 - **Missing, unparsable, or failing the checks below** → **STOP**. Print the template below (and the failing check), and ask the user to create or fix it. Do not guess values.
-- **Valid** → print a table of the resolved values (`prCli`, `remote`, `devBranch`, `mainBranch`, `tagPrefix`, `tagAnnotated`, `gate.*`, `modes`, `versionFiles`, `changelogPath`) and continue.
+- **Valid** → print a table of the resolved values (`prCli`, `remote`, `devBranch`, `mainBranch`, `tagPrefix`, `tagAnnotated`, `gate.*`, `modes`, `versionFiles`, `changelogPath`, `devWrites`, `devMergeCommand`) and continue.
 
 **Validity checks** (the schema `release-kit.schema.json` is authoritative; if `ajv` or `check-jsonschema` is installed you may run it instead):
 
-- `prCli` ∈ `gh` | `glab` | `none`; `gate.mandatory` is a non-empty string; `modes` is a non-empty subset of `standard` | `quick` | `hotfix`.
+- `prCli` ∈ `gh` | `glab` | `none`; `gate.mandatory` is a non-empty string; `modes` is a non-empty subset of `standard` | `quick` | `hotfix`; `devWrites` ∈ `push` | `pr`.
 - No keys other than those in the schema (typos like `devbranch` are errors, not ignored).
 - `versionFiles` and the legacy `frontendVersionFile` are not both present.
 
-**Defaults** for omitted keys: `remote` = `origin`, `devBranch` = `dev`, `mainBranch` = `main`, `tagPrefix` = `v`, `tagAnnotated` = `false`, `changelogPath` = `CHANGELOG.md`, `versionFiles` = `[]`, `gate.phase1` = `gate.mandatory`. `versioningNote` and `ciTriggerNote` have no default — leave their lines out of summaries when absent.
+**Defaults** for omitted keys: `remote` = `origin`, `devBranch` = `dev`, `mainBranch` = `main`, `tagPrefix` = `v`, `tagAnnotated` = `false`, `changelogPath` = `CHANGELOG.md`, `versionFiles` = `[]`, `gate.phase1` = `gate.mandatory`, `devWrites` = `push`. `versioningNote` and `ciTriggerNote` have no default — leave their lines out of summaries when absent. `devMergeCommand` has no default — when absent, the skill merges PRs/MRs into `{{devBranch}}` itself.
 
 **Legacy keys:** `frontendVersionFile` (+ `frontendVersionBumpCmd`) is treated as a single `versionFiles` entry `{ "path": <file>, "bumpCmd": <cmd> }`. `null` = no entries.
 
@@ -64,7 +64,7 @@ Minimal template:
 
 A workflow that is not in `{{modes}}` is **refused**: say which mode was requested and that `.claude/release-kit.json` does not enable it (`standard` covers both Cut and Ship). Do not run it.
 
-After a release or hotfix ships, the user reconciles `{{devBranch}}` with `{{mainBranch}}` themselves (merge `{{mainBranch}}` into `{{devBranch}}`) — this skill does not do it. The skill only reminds them in its final summary.
+After a release or hotfix ships, the user reconciles `{{devBranch}}` with `{{mainBranch}}` themselves (merge `{{mainBranch}}` into `{{devBranch}}`) — this skill does not do it. The skill only reminds them in its final summary. With `{{devWrites}}` = `pr`, the skill instead opens that merge as a PR/MR at the end of Ship, Quick and Hotfix (*Reconcile PR/MR*) — and still never merges it.
 
 Detect the mode/phase from the current branch and the user's words:
 
@@ -149,6 +149,8 @@ glab mr merge <source> --yes -m "<title>" [--remove-source-branch]
 
 **If `{{prCli}}` is `none`** (any host): print `<source>`, `<target>`, `<title>` and `<body>`, and ask the user to open the PR/MR and merge it with a **merge commit** (not squash or rebase — the merged check and the reconcile step rely on it), using `<title>` as the merge commit subject. Wait for the user to say it is merged.
 
+**If `<target>` is `{{devBranch}}` and `{{devMergeCommand}}` is set** (any `{{prCli}}`): create or reuse the PR/MR as above, but never run the merge command. Print the link and tell the user to merge it with `{{devMergeCommand}}` (or the project's gate) as a merge commit, then wait for them to say it is merged — or stop; re-running the skill resumes from the *Already merged?* check. PRs/MRs into `{{mainBranch}}` are not affected.
+
 **Always verify before continuing.** Run the *Already merged?* check again. `glab mr merge` may only queue the merge (auto-merge when the pipeline succeeds), and a user may take a while with `none` — never tag until the check prints `MERGED`.
 
 **If the merge is refused** (required checks, approvals, branch protection): do **not** retry with `--admin` or any bypass. Print the PR/MR link and the reason, ask the user to get it merged (or wait for checks), and stop. Re-running the skill resumes from the *Already merged?* check.
@@ -161,7 +163,7 @@ For each entry in `{{versionFiles}}` (skip this step when there are none):
 - Otherwise → set the top-level `"version"` field of `path` to `X.Y.Z`, changing only that line.
 - Skip an entry that already reads `X.Y.Z`.
 
-If anything changed, commit on the branch the workflow names and push (a protected-branch rejection on `{{devBranch}}` → *Protected branch fallback*):
+If anything changed, commit on the branch the workflow names and push (a protected-branch rejection on `{{devBranch}}` → *Protected branch fallback*; with `{{devWrites}}` = `pr`, never push to `{{devBranch}}` — Quick step 5 sends the commit through *Protected branch fallback* instead):
 
 ```bash
 git add <changed files>
@@ -258,6 +260,36 @@ git push -u origin chore/release-vX.Y.Z-changelog
 
 Then run *Open and merge the PR/MR* with source = that branch, target = `{{devBranch}}`, title = the commit subject, deleting the source branch. Once merged, `git checkout {{devBranch}} && git pull --ff-only` and continue the workflow from the step after the push.
 
+**With `{{devWrites}}` = `pr`** this is the only path, not a fallback: Quick release never pushes to `{{devBranch}}`. It runs the steps above once, after Quick step 5, and the branch carries every commit steps 4 and 5 made (CHANGELOG and version bump; title = the first commit's subject). Once merged — including when its *Already merged?* check finds it merged — `git checkout {{devBranch}} && git pull --ff-only` and continue at Quick step 6, never at the tag step. If the skill stops before the merge (`{{devMergeCommand}}`, `prCli` `none`, a refused merge), tell the user how to resume: once it is merged, `git checkout {{devBranch}} && git pull --ff-only`, then the same request again (e.g. `quick vX.Y.Z`).
+
+### Reconcile PR/MR
+
+Only with `{{devWrites}}` = `pr`. Ship, Quick and Hotfix run it in their summary step, after the tag. It merges `{{mainBranch}}` into `{{devBranch}}` on a short-lived branch and opens — never merges — a PR/MR for it:
+
+```bash
+git fetch origin
+git rev-list --count origin/{{devBranch}}..origin/{{mainBranch}}       # 0 → nothing to reconcile: skip this step
+git ls-remote --exit-code --heads origin chore/reconcile-main-vX.Y.Z    # exit 0 → already pushed: skip to the PR/MR below
+git checkout -b chore/reconcile-main-vX.Y.Z origin/{{devBranch}}
+git merge --no-ff origin/{{mainBranch}} -m "Merge {{mainBranch}} into {{devBranch}} after vX.Y.Z"
+git push -u origin chore/reconcile-main-vX.Y.Z
+git checkout -
+```
+
+A conflict in `{{changelogPath}}` → keep both sides (every released `## [vX.Y.Z]` section, newest on top; `{{devBranch}}`'s `## [Unreleased]` untouched), `git add` it and `git commit --no-edit`. Any other conflict → `git merge --abort`, switch back, delete the local branch, and print the manual reconcile command from the summary instead.
+
+Open the PR/MR with the create (or reuse) commands from *Open and merge the PR/MR* — source `chore/reconcile-main-vX.Y.Z`, target `{{devBranch}}`, title `chore: reconcile {{devBranch}} with {{mainBranch}} after vX.Y.Z`, and this body (`none` keeps the next Cut from listing it):
+
+```markdown
+## Summary
+Brings vX.Y.Z (release merge, tag history, CHANGELOG) from `{{mainBranch}}` back into `{{devBranch}}`.
+
+## Changelog
+none
+```
+
+Never merge it, whatever `{{devMergeCommand}}` says. Print the link and tell the user to merge it with `{{devMergeCommand}}` (or the team's process) as a merge commit — a squash merge leaves `{{mainBranch}}` out of `{{devBranch}}`, and the next Cut stops.
+
 ---
 
 ## Standard Release Workflow
@@ -275,7 +307,7 @@ git ls-remote --exit-code --heads origin release/vX.Y.Z       # must exit 2 (bra
 git merge-base --is-ancestor origin/{{mainBranch}} origin/{{devBranch}}   # must exit 0 (dev already contains main)
 ```
 
-**Stop and warn** if not on `{{devBranch}}`, the working directory is dirty, or `{{devBranch}}` is not even with `origin/{{devBranch}}` in either direction. If it is only *behind*, offer `git pull --ff-only` and continue. If `release/vX.Y.Z` already exists on the remote, **stop**: it was cut already — check it out and run Phase 2. Version checks (tag must not exist) are in *Determine version*. If `origin/{{mainBranch}}` is not an ancestor of `origin/{{devBranch}}` (a hotfix or release was never merged back), **stop** and ask the user to reconcile first (`git checkout {{devBranch}} && git pull && git merge origin/{{mainBranch}} && git push`): `{{changelogPath}}` on `{{devBranch}}` has to contain the released versions, or the section compiled here will conflict when it is merged back.
+**Stop and warn** if not on `{{devBranch}}`, the working directory is dirty, or `{{devBranch}}` is not even with `origin/{{devBranch}}` in either direction. If it is only *behind*, offer `git pull --ff-only` and continue. If `release/vX.Y.Z` already exists on the remote, **stop**: it was cut already — check it out and run Phase 2. Version checks (tag must not exist) are in *Determine version*. If `origin/{{mainBranch}}` is not an ancestor of `origin/{{devBranch}}` (a hotfix or release was never merged back), **stop** and ask the user to reconcile first (`git checkout {{devBranch}} && git pull && git merge origin/{{mainBranch}} && git push`): `{{changelogPath}}` on `{{devBranch}}` has to contain the released versions, or the section compiled here will conflict when it is merged back. With `{{devWrites}}` = `pr`, offer *Reconcile PR/MR* instead (vX.Y.Z = the latest release tag) and stop until it is merged.
 
 #### 2. Run the gate (fail-fast, not the mandatory gate)
 
@@ -411,6 +443,7 @@ Print:
 - Release version, PR/MR link, tag name, number of commits included
 - `{{versioningNote}}` (if set)
 - **Action for the user:** reconcile `{{devBranch}}` with `{{mainBranch}}` — `git checkout {{devBranch}} && git pull && git merge origin/{{mainBranch}} && git push` (if `{{devBranch}}` is protected, open a PR/MR from `{{mainBranch}}` into it instead). Do this before the next `git-commit` or release so `{{devBranch}}` carries the stabilization fixes and the tag history.
+- With `{{devWrites}}` = `pr`, run *Reconcile PR/MR* before printing, and in place of the action above print its link: the user's action is getting that PR/MR merged.
 - Reminder: delete merged `fix/*` branches; drop the local branch with `git branch -d release/vX.Y.Z`
 
 ---
@@ -445,9 +478,11 @@ git commit -m "docs: update CHANGELOG for vX.Y.Z"
 git push origin {{devBranch}}
 ```
 
+With `{{devWrites}}` = `pr`: first run `git ls-remote --exit-code --heads origin chore/release-vX.Y.Z-changelog` — exit 0 means an earlier run already opened that PR/MR, so skip steps 4 and 5 and resume at its *Open and merge the PR/MR* step (*Protected branch fallback*); once it is merged, `git checkout {{devBranch}} && git pull --ff-only` and go on to step 6 — never to the tag step. Otherwise commit as above but do not push; step 5 sends the commit.
+
 #### 5. Bump version files
 
-Run *Bump version files* on `{{devBranch}}`.
+Run *Bump version files* on `{{devBranch}}`. With `{{devWrites}}` = `pr`, if step 4 or this step made a commit, run *Protected branch fallback* now (it carries both commits) — `{{devBranch}}` itself is never pushed.
 
 #### 6. Confirm
 
@@ -463,7 +498,7 @@ Run the *Tag step*.
 
 #### 9. Summary
 
-Print: version, PR/MR link, tag, commit count, `{{versioningNote}}` (if set), and that this was a quick release (no `release/*` branch). Reconcile reminder still applies if `{{mainBranch}}` and `{{devBranch}}` have diverged.
+Print: version, PR/MR link, tag, commit count, `{{versioningNote}}` (if set), and that this was a quick release (no `release/*` branch). Reconcile reminder still applies if `{{mainBranch}}` and `{{devBranch}}` have diverged. With `{{devWrites}}` = `pr`, run *Reconcile PR/MR* instead and print its link.
 
 ---
 
@@ -581,6 +616,7 @@ Print:
 
 - Hotfix version, PR/MR link, tag name
 - **Action for the user:** merge `{{mainBranch}}` back into `{{devBranch}}` (`git checkout {{devBranch}} && git pull && git merge origin/{{mainBranch}} && git push`) so the fix and its CHANGELOG section reach `{{devBranch}}`. Resolve the CHANGELOG conflict by keeping the hotfix's `## [vX.Y.Z]` section above the previous release; leave `{{devBranch}}`'s `## [Unreleased]` untouched.
+- With `{{devWrites}}` = `pr`, run *Reconcile PR/MR* before printing, and in place of the action above print its link: the user's action is getting that PR/MR merged.
 
 ---
 
@@ -596,7 +632,8 @@ Print:
 - The git tag is the version — there is no backend version file. Only bump the files listed in `{{versionFiles}}`.
 - Always tag `origin/{{mainBranch}}` after the merge — never `{{devBranch}}`, `release/*`, or the hotfix branch.
 - `quick` mode must come from the user — never infer it or pick it to save time. It is only available if `"quick"` is in `{{modes}}`; `standard` and `hotfix` likewise must be listed.
-- This skill never merges `{{mainBranch}}` back into `{{devBranch}}`. Reconciling the two is the user's step after the release/hotfix ships; the skill only prints the reminder. Until then, `{{devBranch}}` is missing the stabilization fixes and hotfixes that landed on `{{mainBranch}}`.
+- This skill never merges `{{mainBranch}}` back into `{{devBranch}}`. Reconciling the two is the user's step after the release/hotfix ships; the skill only prints the reminder. Until then, `{{devBranch}}` is missing the stabilization fixes and hotfixes that landed on `{{mainBranch}}`. With `{{devWrites}}` = `pr` the skill opens that merge as a PR/MR from a `chore/reconcile-main-vX.Y.Z` branch (*Reconcile PR/MR*), and still never merges it.
+- With `{{devWrites}}` = `pr`, never push to `{{devBranch}}`: every change to it goes through a PR/MR. With `{{devMergeCommand}}` set, never merge a PR/MR into `{{devBranch}}` yourself — the user merges it with that command.
 - Hotfix: never modify `{{devBranch}}`'s `[Unreleased]` section from the hotfix branch — insert the hotfix's own dated section instead. It reaches `{{devBranch}}` when the user merges `{{mainBranch}}` into it.
 - Hotfix branch name is cosmetic — only the git tag must be `vX.Y.Z`. Adopt any `hotfix/*` branch, but before merging always run the stateless base check (no commit shared with `origin/{{mainBranch}}..origin/{{devBranch}}`). A hotfix branch based on `{{devBranch}}` would ship unreleased work to production.
 - Everything this skill writes to git or the host is in English, even when the conversation is not (see the Language paragraph at the top).
