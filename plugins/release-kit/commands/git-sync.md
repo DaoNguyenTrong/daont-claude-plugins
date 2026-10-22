@@ -16,6 +16,7 @@ If `.claude/release-kit.json` exists and parses, read it. **This command never s
 | Integration branch | `devBranch` | whichever of `dev` / `develop` exists on the remote |
 | Production branch | `mainBranch` | `main`, else `master` |
 | QA branches | `qaBranches` | `testing`, `staging` |
+| Push after rebase | `pushAfterRebase` | `never` |
 
 `origin` below stands for the configured remote.
 
@@ -82,6 +83,13 @@ git rev-list --count HEAD..origin/<base>      # new commits pulled in
 git rebase origin/<base>
 ```
 
+With `pushAfterRebase` set to `force-with-lease`, run this before the rebase, on a branch that exists on the remote:
+
+```bash
+git rev-parse origin/<current>                        # <pre-rebase sha>: the lease step 4 pushes against
+git merge-base --is-ancestor origin/<current> HEAD    # exit 0 = the remote has no commit the local branch lacks
+```
+
 If conflicts occur:
 
 - **Stop immediately** — do not resolve anything.
@@ -92,6 +100,14 @@ If conflicts occur:
 ### 4. After a rebase
 
 If the branch already exists on the remote, the rebase rewrote its history: pushing needs `git push --force-with-lease`, which this command never runs — tell the user, and let them decide.
+
+**Exception — `pushAfterRebase` is `force-with-lease`.** Push it yourself when all hold: the branch is a short-lived work branch (never `hotfix/*` or a long-lived branch), the rebase succeeded and pulled in new commits, and step 3's ancestor check exited 0:
+
+```bash
+git push --force-with-lease=<current>:<pre-rebase sha> origin <current>
+```
+
+The explicit sha means the push only replaces the branch's own previous head. If the ancestor check failed (someone else pushed commits the local branch lacks) or the push is rejected, do not retry: report it and leave the push to the user.
 
 ### 5. Restore stash
 
@@ -110,11 +126,12 @@ Print:
 - Base branch used (and how it was chosen: argument, recorded, by name, or by distance)
 - Number of new commits pulled
 - Whether stash was applied
+- With `pushAfterRebase` set to `force-with-lease`: whether the branch was pushed; if it was not and step 3's ancestor check exited 0, the `<pre-rebase sha>` for a later `/git-mr` (never report it when the check failed)
 - Current status (`git status --short`)
 
 ## Rules
 
-- Never force push. Never run `--force-with-lease` either — only suggest it.
+- Never plain `--force`. Run `--force-with-lease` only as step 4's exception describes — with the explicit pre-rebase sha, never bare; otherwise only suggest it.
 - Never resolve conflicts automatically — always inform the user.
 - Never rebase the production branch, the integration branch, a QA branch, or `release/*` onto anything; they only fast-forward.
 - Never rebase a `fix/*` branch onto the integration branch unless that is its recorded or nearest base.

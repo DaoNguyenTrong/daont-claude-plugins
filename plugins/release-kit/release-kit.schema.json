@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://raw.githubusercontent.com/DaoNguyenTrong/daont-claude-plugins/main/plugins/release-kit/release-kit.schema.json",
   "title": "release-kit project config",
-  "description": "Per-project bindings for the release-kit plugin (git-release skill, git-commit and git-sync commands). Lives at <repo>/.claude/release-kit.json.",
+  "description": "Per-project bindings for the release-kit plugin (git-release skill, git-commit, git-mr and git-sync commands). Lives at <repo>/.claude/release-kit.json.",
   "type": "object",
   "additionalProperties": false,
   "required": ["prCli", "gate", "modes"],
@@ -37,6 +37,39 @@
       "uniqueItems": true,
       "items": { "type": "string", "minLength": 1 },
       "default": ["testing", "staging"]
+    },
+    "branchPrefixes": {
+      "description": "Branch names git-commit uses on the integration branch, picked by the dominant change: 'feature' for new behavior, 'fix' for a bug fix, 'chore' for tooling, docs or refactoring. Values are prefixes without the trailing '/'. Branches cut from QA, release/* and production branches keep fix/ and hotfix/.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "feature": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$", "default": "feature" },
+        "fix": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$", "default": "fix" },
+        "chore": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$", "default": "chore" }
+      },
+      "default": { "feature": "feature", "fix": "fix", "chore": "chore" }
+    },
+    "prExtraSections": {
+      "description": "Extra PR/MR description sections git-mr writes after Summary, Changelog and Review: one '## <heading>' per entry, in this order, filled from the branch, commits and session ('None' when nothing applies). Do not repeat Summary, Changelog or Review. Omitted = only the three standard sections.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 },
+      "default": []
+    },
+    "pushAfterRebase": {
+      "description": "What happens after a short-lived work branch that is already on the remote has been rebased. 'never': git-sync only suggests the push and git-mr stops on a non-fast-forward rejection. 'force-with-lease': git-sync pushes with --force-with-lease=<branch>:<pre-rebase remote sha>, so only the branch's own previous head is overwritten, and git-mr may do the same on a rejection when this session rebased the branch onto its base. Never applies to the integration, production, QA, release/* or hotfix/* branches.",
+      "enum": ["never", "force-with-lease"],
+      "default": "never"
+    },
+    "devWrites": {
+      "description": "How git-release changes devBranch. 'push': Quick release pushes its commits to devBranch directly (a PR/MR only when the push is refused as protected), and reconciling devBranch with mainBranch after a release is left to the user. 'pr': nothing is pushed to devBranch — Quick release's commits go through a chore/release-vX.Y.Z-changelog PR/MR, and after Ship, Hotfix and Quick the skill opens (never merges) a chore/reconcile-main-vX.Y.Z PR/MR that merges mainBranch into devBranch.",
+      "enum": ["push", "pr"],
+      "default": "push"
+    },
+    "devMergeCommand": {
+      "description": "The project's gated way to merge PRs/MRs into devBranch, e.g. '/git-accept'. When set, git-release opens PRs/MRs into devBranch but never merges them: it prints the link, tells the user to merge with this command (or the project's gate), and resumes once they are merged. PRs/MRs into mainBranch are unaffected. Omitted = the skill merges them itself.",
+      "type": "string",
+      "minLength": 1
     },
     "tagPrefix": {
       "description": "Prefix of release tags, release branches and changelog headings: '<tagPrefix>X.Y.Z'. Use '' for bare tags (MinVer's default). 'vX.Y.Z' in the skill text means '<tagPrefix>X.Y.Z'.",

@@ -5,7 +5,7 @@ Release workflow for git projects with an integration branch and a production br
 | Component | Type | What it does |
 | --- | --- | --- |
 | `git-release` | skill | Cut a release branch, compile the CHANGELOG from merged PRs/MRs, ship to the production branch, tag. Standard / quick / hotfix, resumable. Driven by a per-project config file. |
-| `git-commit` | command | Branch-safety check and grouped conventional commits. |
+| `git-commit` | command | Branch-safety check (on the integration branch, a `feature/`, `fix/` or `chore/` branch by change type) and grouped conventional commits — of everything, or only the paths you pass. |
 | `git-mr` | command | Push the branch and open a PR/MR with a short description: a summary, the `## Changelog` section the release is built from, and a review checklist ticked only for facts it verified. |
 | `git-sync` | command | Fetch, then rebase short-lived branches onto the branch they were cut from and fast-forward long-lived ones; stash/restore, conflict-abort. |
 
@@ -39,6 +39,9 @@ Schema: [`release-kit.schema.json`](./release-kit.schema.json). Required: `prCli
 | `remote` | git remote used for every fetch/push/tag | `origin` |
 | `devBranch` / `mainBranch` | integration branch / production branch | `dev` / `main` |
 | `qaBranches` | long-lived QA branches; `git-commit` cuts `fix/*` from them, `git-mr` refuses to open a PR/MR from them and can target them, `git-sync` rebases those back onto them | `["testing", "staging"]` |
+| `branchPrefixes` | names `git-commit` uses for the branch it cuts from `devBranch`, by dominant change: `feature` (new behavior), `fix` (bug fix), `chore` (tooling, docs, refactoring); without the trailing `/` | `{"feature": "feature", "fix": "fix", "chore": "chore"}` |
+| `prExtraSections` | extra `## <heading>` sections `git-mr` adds after Review, in order, filled from the branch and session (`None` when nothing applies) | none |
+| `pushAfterRebase` | `never`: `git-sync` only suggests the push after a rebase and `git-mr` stops on a non-fast-forward rejection. `force-with-lease`: both push a rebased work branch with `--force-with-lease=<branch>:<pre-rebase remote sha>` (never plain `--force`, never long-lived or `hotfix/*` branches) | `never` |
 | `tagPrefix` | prefix of tags, `release/*` branches and changelog headings (`""` for bare tags such as MinVer's default) | `v` |
 | `tagAnnotated` | `true` creates annotated tags (`git tag -a`) | `false` |
 | `versioningNote` | one line on how the version is derived (echoed in summaries) | omitted |
@@ -48,6 +51,8 @@ Schema: [`release-kit.schema.json`](./release-kit.schema.json). Required: `prCli
 | `changelogPath` | changelog written by `git-release` | `CHANGELOG.md` |
 | `ciTriggerNote` | one sentence on when CI runs, shown in the Phase 2 gate section | omitted |
 | `modes` | subset of `standard`, `quick`, `hotfix`; a mode that is not listed is refused | — |
+| `devWrites` | `push`: quick release pushes its commits to `devBranch` (a PR/MR only if the push is refused) and you reconcile `devBranch` with `mainBranch` yourself. `pr`: nothing is pushed to `devBranch` — quick release's commits go through a `chore/release-vX.Y.Z-changelog` PR/MR, and after ship, quick and hotfix the skill opens (never merges) a `chore/reconcile-main-vX.Y.Z` PR/MR | `push` |
+| `devMergeCommand` | the project's gated merge for PRs/MRs into `devBranch` (e.g. `/git-accept`): the skill opens them but never merges them, tells you to merge with it, and resumes when you run it again; PRs/MRs into `mainBranch` are unaffected | omitted (the skill merges) |
 
 `frontendVersionFile` / `frontendVersionBumpCmd` still work (they mean one `versionFiles` entry) but are deprecated.
 
@@ -107,6 +112,23 @@ Schema: [`release-kit.schema.json`](./release-kit.schema.json). Required: `prCli
 }
 ```
 
+**GitHub, every change to `dev` through a gated PR, rebased work branches, extra PR sections:**
+
+```json
+{
+  "prCli": "gh",
+  "gate": {
+    "mandatory": "scripts/test-gate.sh"
+  },
+  "modes": ["standard", "hotfix"],
+  "devWrites": "pr",
+  "devMergeCommand": "/git-accept",
+  "pushAfterRebase": "force-with-lease",
+  "prExtraSections": ["Test plan", "Feature map"],
+  "branchPrefixes": { "feature": "feature", "fix": "fix", "chore": "chore" }
+}
+```
+
 **Any other host (Bitbucket, Azure DevOps, Gitea, protected branches), bare tags, annotated tags:**
 
 ```json
@@ -147,9 +169,9 @@ feature/* or fix/*  --/git-mr-->  PR/MR with a "## Changelog" section  --merge--
 
 Or just `none` when a reader of the changelog would not care. Categories are Added, Changed, Deprecated, Removed, Fixed, Security. A fix for a bug that never shipped in a released version is `none` — readers never saw the bug. `git-mr` drafts the section from your commits and asks before it opens the PR/MR.
 
-**The `## Review` checklist** tells the reviewer what was verified. `git-mr` ticks a box only for a fact it checked in that run — up to date with the base, everything committed, tests passed on this exact commit — and otherwise leaves `[ ]` with the reason. `Breaking change` and `Look at` are always left for the reviewer. The whole description stays within 15 lines.
+**The `## Review` checklist** tells the reviewer what was verified. `git-mr` ticks a box only for a fact it checked in that run — up to date with the base, everything committed, tests passed on this exact commit — and otherwise leaves `[ ]` with the reason. `Breaking change` and `Look at` are always left for the reviewer. The whole description stays within 15 lines; sections a project adds through `prExtraSections` come after Review and do not count toward that cap.
 
-**MR templates.** Add the three sections to your PR/MR template so nobody has to remember the format:
+**MR templates.** Add the three sections (and any `prExtraSections` headings) to your PR/MR template so nobody has to remember the format:
 
 - GitLab: `.gitlab/merge_request_templates/Default.md`
 - GitHub: `.github/pull_request_template.md`
@@ -184,7 +206,7 @@ A PR/MR with no usable `## Changelog` section is never dropped silently: `git-re
 - It never tags before the merge is verified (`git merge-base --is-ancestor`), never moves or deletes an existing tag, and never bypasses branch protection. If a merge is refused (required checks, approvals) it prints the PR/MR link and stops.
 - A release that stopped halfway (PR merged, tag not pushed) is safe to resume: run `/git-release` and say "resume", or run it again — every irreversible step first checks whether it is already done.
 - Hotfix branches are checked statelessly: any commit shared with the unreleased `devBranch` work stops the release.
-- Quick release is the only workflow that commits to `devBranch` directly; if it is protected, that commit goes through a short-lived PR/MR instead of a direct push.
+- Quick release is the only workflow that commits to `devBranch` directly; if it is protected, that commit goes through a short-lived PR/MR instead of a direct push. With `devWrites: "pr"` it always does, and the post-release reconcile is a PR/MR too.
 
 ## Assumptions and limits
 
@@ -243,3 +265,9 @@ Manual checklist — run `/git-release` in a scratch repo with a fake `.claude/r
 - [ ] Stop Cut right after the branch is cut, then Ship → the section is built from the cut point, without dev's later PRs/MRs
 - [ ] Entries left under `## [Unreleased]` are folded into the new section and `[Unreleased]` ends up empty
 - [ ] `/git-mr` on a branch that is behind its base with uncommitted files and no test run → the description stays within 15 lines and the `## Review` checklist shows `[ ]` with the reason for each of the three
+- [ ] None of `devWrites`, `devMergeCommand`, `pushAfterRebase`, `prExtraSections`, `branchPrefixes` set → every command behaves as before they existed (apart from `git-commit`'s `fix/`/`chore/` prefix on the integration branch)
+- [ ] `prExtraSections: ["Test plan"]` → `/git-mr` adds `## Test plan` after Review, `None` when nothing applies
+- [ ] `pushAfterRebase: "force-with-lease"` → `/git-sync` on a pushed `feature/*` branch pushes with `--force-with-lease=<branch>:<sha>`; after a teammate's push to it, it does not push
+- [ ] `devWrites: "pr"` + quick release → no push to `dev`; one `chore/release-vX.Y.Z-changelog` PR/MR; after the tag a `chore/reconcile-main-vX.Y.Z` PR/MR is opened, not merged
+- [ ] `devMergeCommand` set → PRs/MRs into `dev` are opened, not merged; the skill names the command and resumes on re-run
+- [ ] `/git-commit <path>` with other files changed (one of them already staged) → only `<path>` is committed, the rest stays as it was
