@@ -108,6 +108,7 @@ def test_schema():
         ("qaBranches", {**base, "qaBranches": ["qa"]}),
         ("prExtraSections", {**base, "prExtraSections": ["Test plan", "Risks"]}),
         ("pushAfterRebase force-with-lease", {**base, "pushAfterRebase": "force-with-lease"}),
+        ("devWrites pr + devMergeCommand", {**base, "devWrites": "pr", "devMergeCommand": "/git-accept"}),
     ]
     bad = [
         ("unknown key", {**base, "devbranch": "dev"}),
@@ -122,6 +123,8 @@ def test_schema():
         ("prExtraSections not a list", {**base, "prExtraSections": "Test plan"}),
         ("prExtraSections empty heading", {**base, "prExtraSections": [""]}),
         ("pushAfterRebase force", {**base, "pushAfterRebase": "force"}),
+        ("unknown devWrites", {**base, "devWrites": "direct"}),
+        ("empty devMergeCommand", {**base, "devMergeCommand": ""}),
     ]
     for name, doc in good:
         check(validator.is_valid(doc), f"accepts: {name}")
@@ -454,6 +457,21 @@ def test_changelog_ranges():
         check(bash(sub(ancestor_cmd), w).returncode != 0, "Cut pre-flight stops while main has commits that dev lacks")
         git(w, "checkout", "-q", "dev"); git(w, "merge", "-q", "--no-edit", "origin/main"); git(w, "push", "-q", "origin", "dev"); git(w, "fetch", "-q", "origin")
         check(bash(sub(ancestor_cmd), w).returncode == 0, "Cut pre-flight passes once dev contains main")
+
+        # devWrites "pr": the Reconcile PR/MR branch, merged as a PR into dev, satisfies the Cut pre-flight
+        pending = extract(skill, "git rev-list --count origin/{{devBranch}}..origin/{{mainBranch}}")
+        cut_branch = extract(skill, "git checkout -b chore/reconcile-main-vX.Y.Z origin/{{devBranch}}")
+        merge_main = extract(skill, "git merge --no-ff origin/{{mainBranch}} -m")
+        check(bash(sub(pending), w).stdout.strip() == "0", "Reconcile PR/MR is skipped when dev already contains main")
+        git(w, "checkout", "-q", "main"); commit("hotfix2"); git(w, "push", "-q", "origin", "main"); git(w, "fetch", "-q", "origin")
+        check(bash(sub(pending), w).stdout.strip() != "0", "Reconcile PR/MR runs when main has commits dev lacks")
+        for cmd in (cut_branch, merge_main):
+            out = bash(sub(cmd), w)
+            check(out.returncode == 0, f"Reconcile PR/MR command runs: {sub(cmd).split('#')[0].strip()}")
+        git(w, "checkout", "-q", "dev"); git(w, "pull", "-q", "--ff-only", "origin", "dev")
+        git(w, "merge", "-q", "--no-ff", "chore/reconcile-main-v1.1.0", "-m", "Merge pull request #99"); git(w, "push", "-q", "origin", "dev")
+        git(w, "fetch", "-q", "origin")
+        check(bash(sub(ancestor_cmd), w).returncode == 0, "Cut pre-flight passes once the Reconcile PR/MR is merged into dev")
 
 
 def main():

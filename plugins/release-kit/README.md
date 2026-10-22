@@ -50,6 +50,8 @@ Schema: [`release-kit.schema.json`](./release-kit.schema.json). Required: `prCli
 | `changelogPath` | changelog written by `git-release` | `CHANGELOG.md` |
 | `ciTriggerNote` | one sentence on when CI runs, shown in the Phase 2 gate section | omitted |
 | `modes` | subset of `standard`, `quick`, `hotfix`; a mode that is not listed is refused | — |
+| `devWrites` | `push`: quick release pushes its commits to `devBranch` (a PR/MR only if the push is refused) and you reconcile `devBranch` with `mainBranch` yourself. `pr`: nothing is pushed to `devBranch` — quick release's commits go through a `chore/release-vX.Y.Z-changelog` PR/MR, and after ship, quick and hotfix the skill opens (never merges) a `chore/reconcile-main-vX.Y.Z` PR/MR | `push` |
+| `devMergeCommand` | the project's gated merge for PRs/MRs into `devBranch` (e.g. `/git-accept`): the skill opens them but never merges them, tells you to merge with it, and resumes when you run it again; PRs/MRs into `mainBranch` are unaffected | omitted (the skill merges) |
 
 `frontendVersionFile` / `frontendVersionBumpCmd` still work (they mean one `versionFiles` entry) but are deprecated.
 
@@ -186,7 +188,7 @@ A PR/MR with no usable `## Changelog` section is never dropped silently: `git-re
 - It never tags before the merge is verified (`git merge-base --is-ancestor`), never moves or deletes an existing tag, and never bypasses branch protection. If a merge is refused (required checks, approvals) it prints the PR/MR link and stops.
 - A release that stopped halfway (PR merged, tag not pushed) is safe to resume: run `/git-release` and say "resume", or run it again — every irreversible step first checks whether it is already done.
 - Hotfix branches are checked statelessly: any commit shared with the unreleased `devBranch` work stops the release.
-- Quick release is the only workflow that commits to `devBranch` directly; if it is protected, that commit goes through a short-lived PR/MR instead of a direct push.
+- Quick release is the only workflow that commits to `devBranch` directly; if it is protected, that commit goes through a short-lived PR/MR instead of a direct push. With `devWrites: "pr"` it always does, and the post-release reconcile is a PR/MR too.
 
 ## Assumptions and limits
 

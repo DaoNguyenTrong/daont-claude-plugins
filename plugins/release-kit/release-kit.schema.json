@@ -50,6 +50,16 @@
       "enum": ["never", "force-with-lease"],
       "default": "never"
     },
+    "devWrites": {
+      "description": "How git-release changes devBranch. 'push': Quick release pushes its commits to devBranch directly (a PR/MR only when the push is refused as protected), and reconciling devBranch with mainBranch after a release is left to the user. 'pr': nothing is pushed to devBranch — Quick release's commits go through a chore/release-vX.Y.Z-changelog PR/MR, and after Ship, Hotfix and Quick the skill opens (never merges) a chore/reconcile-main-vX.Y.Z PR/MR that merges mainBranch into devBranch.",
+      "enum": ["push", "pr"],
+      "default": "push"
+    },
+    "devMergeCommand": {
+      "description": "The project's gated way to merge PRs/MRs into devBranch, e.g. '/git-accept'. When set, git-release opens PRs/MRs into devBranch but never merges them: it prints the link, tells the user to merge with this command (or the project's gate), and resumes once they are merged. PRs/MRs into mainBranch are unaffected. Omitted = the skill merges them itself.",
+      "type": "string",
+      "minLength": 1
+    },
     "tagPrefix": {
       "description": "Prefix of release tags, release branches and changelog headings: '<tagPrefix>X.Y.Z'. Use '' for bare tags (MinVer's default). 'vX.Y.Z' in the skill text means '<tagPrefix>X.Y.Z'.",
       "type": "string",
