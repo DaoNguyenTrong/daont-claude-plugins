@@ -1,6 +1,6 @@
 {
   "name": "release-kit",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Release workflow: git-release skill (config-driven via .claude/release-kit.json), git-commit, git-mr and git-sync commands.",
   "author": {
     "name": "DaoNguyenTrong",
