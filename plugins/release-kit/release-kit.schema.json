@@ -45,6 +45,11 @@
       "items": { "type": "string", "minLength": 1 },
       "default": []
     },
+    "pushAfterRebase": {
+      "description": "What happens after a short-lived work branch that is already on the remote has been rebased. 'never': git-sync only suggests the push and git-mr stops on a non-fast-forward rejection. 'force-with-lease': git-sync pushes with --force-with-lease=<branch>:<pre-rebase remote sha>, so only the branch's own previous head is overwritten, and git-mr may do the same on a rejection when this session rebased the branch onto its base. Never applies to the integration, production, QA, release/* or hotfix/* branches.",
+      "enum": ["never", "force-with-lease"],
+      "default": "never"
+    },
     "tagPrefix": {
       "description": "Prefix of release tags, release branches and changelog headings: '<tagPrefix>X.Y.Z'. Use '' for bare tags (MinVer's default). 'vX.Y.Z' in the skill text means '<tagPrefix>X.Y.Z'.",
       "type": "string",

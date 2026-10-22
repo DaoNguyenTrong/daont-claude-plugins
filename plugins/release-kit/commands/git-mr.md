@@ -18,6 +18,7 @@ If `.claude/release-kit.json` exists and parses, read it. **This command never s
 | Production branch | `mainBranch` | `main`, else `master` |
 | QA branches | `qaBranches` | `testing`, `staging` |
 | Extra description sections | `prExtraSections` | none |
+| Push after rebase | `pushAfterRebase` | `never` |
 
 `origin` below stands for the configured remote. If `prCli` is `gh` or `glab` but that CLI is not installed or not logged in (`gh auth status` / `glab auth status` fails), continue in **manual mode**: do every step except creating the PR/MR, then print the title and description for the user to paste into the host's web UI.
 
@@ -101,7 +102,7 @@ Print the target branch, the title and the description, and ask once: create (or
 
 ### 7. Push
 
-`git push -u origin <current>`. A rejection (for example non-fast-forward after a rebase) → stop and report. Never force push.
+`git push -u origin <current>`. A rejection (for example non-fast-forward after a rebase) → stop and report. Never force push. **Exception:** with `pushAfterRebase` set to `force-with-lease`, a non-fast-forward rejection on a branch this session just rebased onto `<base>` (`/git-sync`) may be pushed with `git push --force-with-lease=<current>:<pre-rebase sha> origin <current>`, using the remote sha captured before that rebase — never the `origin/<current>` from this command's own fetch. No such sha → stop and report.
 
 ### 8. Create or update the PR/MR
 
@@ -123,6 +124,6 @@ Print the PR/MR URL. Say how it gets merged: if the change is docs-only and the 
 ## Rules
 
 - Never merge the PR/MR from this command — merging happens only through the project's gated merge path or by the team's review process
-- Never force push and never bypass branch protection
+- Never plain `--force` and never bypass branch protection; `--force-with-lease` only as step 7's exception describes
 - Never open a PR/MR from the integration, production, QA, `release/*` or `hotfix/*` branches
 - If any step fails, stop and report

@@ -40,6 +40,7 @@ Schema: [`release-kit.schema.json`](./release-kit.schema.json). Required: `prCli
 | `devBranch` / `mainBranch` | integration branch / production branch | `dev` / `main` |
 | `qaBranches` | long-lived QA branches; `git-commit` cuts `fix/*` from them, `git-mr` refuses to open a PR/MR from them and can target them, `git-sync` rebases those back onto them | `["testing", "staging"]` |
 | `prExtraSections` | extra `## <heading>` sections `git-mr` adds after Review, in order, filled from the branch and session (`None` when nothing applies) | none |
+| `pushAfterRebase` | `never`: `git-sync` only suggests the push after a rebase and `git-mr` stops on a non-fast-forward rejection. `force-with-lease`: both push a rebased work branch with `--force-with-lease=<branch>:<pre-rebase remote sha>` (never plain `--force`, never long-lived or `hotfix/*` branches) | `never` |
 | `tagPrefix` | prefix of tags, `release/*` branches and changelog headings (`""` for bare tags such as MinVer's default) | `v` |
 | `tagAnnotated` | `true` creates annotated tags (`git tag -a`) | `false` |
 | `versioningNote` | one line on how the version is derived (echoed in summaries) | omitted |
