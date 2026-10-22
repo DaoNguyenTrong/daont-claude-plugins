@@ -1,10 +1,10 @@
 ---
-description: "Commit all current changes: branch safety and grouped conventional commits."
+description: "Commit all current changes, or only the paths given: branch safety and grouped conventional commits."
 ---
 
 # Git Commit Workflow
 
-Commit all current changes following a structured workflow.
+Commit all current changes following a structured workflow. Optional argument: paths (files or directories, `/git-commit src/api docs/setup.md`) — only those are committed, and every other change is left untouched.
 
 ## 0. Resolve project settings
 
@@ -16,6 +16,7 @@ If `.claude/release-kit.json` exists and parses, read it. **This command never s
 | Integration branch | `devBranch` | whichever of `dev` / `develop` exists on the remote |
 | Production branch | `mainBranch` | `main`, else `master` |
 | QA branches | `qaBranches` | `testing`, `staging` |
+| Branch prefixes on the integration branch | `branchPrefixes` | `feature`, `fix`, `chore` |
 
 `develop` is also accepted as an integration branch, and `master` as a production branch, when the config names neither.
 
@@ -25,9 +26,10 @@ If `.claude/release-kit.json` exists and parses, read it. **This command never s
 
 Check the current branch:
 
-- **Integration branch** (`devBranch`, or `dev` / `develop`) → create a `feature/` branch:
-  - Format: `feature/<short-kebab-case-description>`
-  - `git checkout -b feature/<name>`
+- **Integration branch** (`devBranch`, or `dev` / `develop`) → create a branch prefixed by the dominant change (of the given paths, when there are any), using the names in `branchPrefixes`:
+  - `feature/` for new behavior, `fix/` for a bug fix, `chore/` for tooling, docs or refactoring
+  - Format: `<prefix>/<short-kebab-case-description>`
+  - `git checkout -b <prefix>/<name>`
 - **QA branch** (any of `qaBranches`, e.g. `testing` / `staging`) → create a `fix/` branch:
   - Format: `fix/<short-kebab-case-description>`
   - `git checkout -b fix/<name>`
@@ -38,7 +40,7 @@ Check the current branch:
 - **`release/*`** (a release-stabilization branch, e.g. `release/vX.Y.Z`) → create a `fix/` branch off it:
   - Format: `fix/<short-kebab-case-description>`
   - `git checkout -b fix/<name>`
-- **Already on a feature/fix/hotfix/chore/test branch** → stay on it, commit directly rather than spinning off a new branch.
+- **Already on a feature/fix/hotfix/chore/test branch** (or one named with a `branchPrefixes` prefix) → stay on it, commit directly rather than spinning off a new branch.
 
 Whenever this step creates a branch, record the branch it was cut from, so `git-sync` later rebases onto the right base instead of guessing:
 
@@ -58,6 +60,8 @@ git diff
 git log --oneline -5
 ```
 
+With paths given, look only at those (`git status -- <paths>`, `git diff -- <paths>`). Without paths, before committing, list any changes that look unrelated to the rest (another feature, stray debug edits, files from a parallel task) and tell the user that `/git-commit <paths>` commits a subset — then still commit everything.
+
 ### 3. Group and Commit
 
 Group changed files into logical commits:
@@ -68,6 +72,7 @@ Group changed files into logical commits:
 - Focus on **why**, not **what**
 - Language: write every commit message, PR/MR title and description, and changelog entry in English, whatever language the user talks to you in.
 - Stage specific files per group: `git add <file1> <file2>`
+- With paths given, commit each group with `git commit -m "..." -- <its files>`, so anything staged earlier outside the paths stays out of the commit
 - If all changes are tightly related, a single commit is fine — don't split artificially
 - If there's a related plan file, include it in the commit
 
@@ -91,6 +96,7 @@ Once the commits are made, tell the user: run `/git-mr` to push the branch and o
 ## Rules
 
 - `git add` specific files — NEVER use `git add .` or `git add -A`
+- With paths given, never stage, commit, stash or discard anything outside them
 - Never commit files containing secrets (`.env`, credentials)
 - Never force push
 - If any step fails, stop and report

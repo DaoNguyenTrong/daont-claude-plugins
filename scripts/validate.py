@@ -109,6 +109,7 @@ def test_schema():
         ("prExtraSections", {**base, "prExtraSections": ["Test plan", "Risks"]}),
         ("pushAfterRebase force-with-lease", {**base, "pushAfterRebase": "force-with-lease"}),
         ("devWrites pr + devMergeCommand", {**base, "devWrites": "pr", "devMergeCommand": "/git-accept"}),
+        ("branchPrefixes partial", {**base, "branchPrefixes": {"fix": "bugfix"}}),
     ]
     bad = [
         ("unknown key", {**base, "devbranch": "dev"}),
@@ -125,6 +126,8 @@ def test_schema():
         ("pushAfterRebase force", {**base, "pushAfterRebase": "force"}),
         ("unknown devWrites", {**base, "devWrites": "direct"}),
         ("empty devMergeCommand", {**base, "devMergeCommand": ""}),
+        ("unknown branchPrefixes key", {**base, "branchPrefixes": {"feat": "feat"}}),
+        ("branchPrefixes value with a slash", {**base, "branchPrefixes": {"feature": "feature/"}}),
     ]
     for name, doc in good:
         check(validator.is_valid(doc), f"accepts: {name}")

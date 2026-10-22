@@ -38,6 +38,17 @@
       "items": { "type": "string", "minLength": 1 },
       "default": ["testing", "staging"]
     },
+    "branchPrefixes": {
+      "description": "Branch names git-commit uses on the integration branch, picked by the dominant change: 'feature' for new behavior, 'fix' for a bug fix, 'chore' for tooling, docs or refactoring. Values are prefixes without the trailing '/'. Branches cut from QA, release/* and production branches keep fix/ and hotfix/.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "feature": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$", "default": "feature" },
+        "fix": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$", "default": "fix" },
+        "chore": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$", "default": "chore" }
+      },
+      "default": { "feature": "feature", "fix": "fix", "chore": "chore" }
+    },
     "prExtraSections": {
       "description": "Extra PR/MR description sections git-mr writes after Summary, Changelog and Review: one '## <heading>' per entry, in this order, filled from the branch, commits and session ('None' when nothing applies). Do not repeat Summary, Changelog or Review. Omitted = only the three standard sections.",
       "type": "array",
