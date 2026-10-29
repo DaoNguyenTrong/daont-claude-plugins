@@ -1,0 +1,37 @@
+# plane-kit: v{{pluginVersion}}
+# Gắn link PR và comment vào work item {{identifier}}-<số> khi PR mở/cập nhật, khi merge vào {{devBranch}} và khi
+# đẩy tag vX.Y.Z; merge vào {{devBranch}} còn chuyển item chính của PR sang {{readyState}}
+# (.plane-kit/plane_sync.py). Script luôn thoát 0; PR từ fork không có secret nên bước đồng bộ tự bỏ qua.
+name: plane-sync
+
+on:
+  pull_request:
+  push:
+    branches: ["{{devBranch}}"]
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  plane-sync:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 5
+    env:
+      PLANE_API_KEY: ${{ secrets.PLANE_API_KEY }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      PLANE_IDENTIFIER: "{{identifier}}"
+      PLANE_BASE_URL: "{{baseUrl}}"
+      PLANE_WORKSPACE_SLUG: "{{workspaceSlug}}"
+      PLANE_READY_STATE: "{{readyState}}"
+      PLANE_MOVABLE_STATES: "{{movableStates}}"
+      PLANE_DEV_BRANCH: "{{devBranch}}"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # đọc dải commit vừa merge và commit từ tag trước
+      - name: Sync with Plane
+        if: env.PLANE_API_KEY != ''
+        run: python3 .plane-kit/plane_sync.py

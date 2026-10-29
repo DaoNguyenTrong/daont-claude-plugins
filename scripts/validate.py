@@ -22,11 +22,14 @@ except ImportError:
 ROOT = Path(__file__).resolve().parent.parent
 PLUGIN = ROOT / "plugins" / "release-kit"
 SCHEMA = PLUGIN / "release-kit.schema.json"
+PLANE = ROOT / "plugins" / "plane-kit"
+PLANE_SCHEMA = PLANE / "plane-kit.schema.json"
+PLANE_SKILL = PLANE / "skills" / "plane-task" / "SKILL.md"
 SKILL = PLUGIN / "skills" / "git-release" / "SKILL.md"
 COMMANDS = PLUGIN / "commands"
 SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
 CATEGORIES = ["Added", "Changed", "Deprecated", "Removed", "Fixed", "Security"]
-GIT_MR_LINE_BUDGET = 130
+GIT_MR_LINE_BUDGET = 140
 LANGUAGE_RULE = ("Language: write every commit message, PR/MR title and description, "
                  "and changelog entry in English, whatever language the user talks to you in.")
 
@@ -79,7 +82,8 @@ def test_manifests(tag):
             data = load(manifest)
             check(data["name"] == entry["name"], f"{entry['name']}: plugin.json name matches marketplace")
             check(bool(SEMVER.match(data["version"])), f"{entry['name']}: version {data['version']} is X.Y.Z")
-            if tag:
+            # the repo's vX.Y.Z tags are release-kit's; other plugins version independently
+            if tag and entry["name"] == "release-kit":
                 check(data["version"] == tag.lstrip("v"), f"{entry['name']}: version {data['version']} matches tag {tag}")
 
 
@@ -135,6 +139,165 @@ def test_schema():
         check(not validator.is_valid(doc), f"rejects: {name}")
 
 
+def test_plane_schema():
+    print("plane-kit schema")
+    market = load(ROOT / ".claude-plugin" / "marketplace.json")
+    check("plane-kit" in [e["name"] for e in market["plugins"]], "plane-kit is listed in the marketplace")
+    schema = load(PLANE_SCHEMA)
+    Draft7Validator.check_schema(schema)
+    check(True, "plane-kit schema is valid draft-07")
+    validator = Draft7Validator(schema)
+
+    base = {"identifier": "ACME", "projectId": "54c5b126-c344-42ef-a1db-82b20c1763d8", "workspaceSlug": "ws",
+            "baseUrl": "https://plane.example", "host": "gitlab"}
+    good = [
+        ("required keys only", base),
+        ("host github", {**base, "host": "github"}),
+        ("every optional key", {**base, "devBranch": "develop", "readyState": "QA", "movableStates": ["Todo"],
+                                "agentMaySet": ["inProgress", "ready"], "language": "en",
+                                "branchPattern": "feature/<identifier-lowercase>-<n>-<slug>"}),
+        ("agentMaySet empty", {**base, "agentMaySet": []}),
+        ("agentMaySet narrowed", {**base, "agentMaySet": ["inProgress"]}),
+    ]
+    bad = [
+        ("unknown key", {**base, "devbranch": "dev"}),
+        ("missing host", {k: v for k, v in base.items() if k != "host"}),
+        ("unknown host", {**base, "host": "bitbucket"}),
+        ("agentMaySet Done", {**base, "agentMaySet": ["Done"]}),
+        ("agentMaySet done", {**base, "agentMaySet": ["done"]}),
+        ("agentMaySet duplicate", {**base, "agentMaySet": ["inProgress", "inProgress"]}),
+        ("agentMaySet outside the default policy", {**base, "agentMaySet": ["ready", "other"]}),
+        ("lowercase identifier", {**base, "identifier": "acme"}),
+        ("empty identifier", {**base, "identifier": ""}),
+        ("projectId not a uuid", {**base, "projectId": "not-a-uuid"}),
+        ("baseUrl without scheme", {**base, "baseUrl": "plane.example"}),
+        ("empty movableStates", {**base, "movableStates": []}),
+        ("empty devBranch", {**base, "devBranch": ""}),
+    ]
+    for name, doc in good:
+        check(validator.is_valid(doc), f"accepts: {name}")
+    for name, doc in bad:
+        check(not validator.is_valid(doc), f"rejects: {name}")
+
+    readme = (PLANE / "README.md").read_text(encoding="utf-8")
+    examples = [b for b in json_blocks(PLANE / "README.md") if '"identifier"' in b]
+    check(bool(examples), "plane-kit README has a config example")
+    for i, block in enumerate(examples, 1):
+        errors = [e.message for e in validator.iter_errors(json.loads(block))]
+        check(not errors, f"README example {i} validates" + (f": {errors[0]}" if errors else ""))
+    check("/plane-sync-ci" in readme and "plugin update" in readme,
+          "README tells users to run /plane-sync-ci after plugin update")
+
+
+PLANE_SAMPLE = {"identifier": "ACME", "projectId": "54c5b126-c344-42ef-a1db-82b20c1763d8", "workspaceSlug": "ws",
+                "baseUrl": "https://plane.example", "host": "gitlab", "devBranch": "dev",
+                "readyState": "Ready For Testing", "movableStates": "Backlog,Todo,In Progress",
+                "pluginVersion": "0.1.0"}
+PLANE_VENDORED = ["plane_sync.py", "commit-msg-refs.sh", "gitlab/plane.yml", "github/plane-sync.yml",
+                 "lefthook-refs.yml"]
+
+
+def test_plane_templates():
+    print("plane-kit templates")
+    keys = set(load(PLANE_SCHEMA)["properties"]) | {"pluginVersion"}
+    for name in PLANE_VENDORED:
+        path = PLANE / "templates" / name
+        check(path.is_file(), f"templates/{name} exists")
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8")
+        head = text.splitlines()[:3]
+        check(head.count("# plane-kit: v{{pluginVersion}}") == 1 and text.count("# plane-kit: v") == 1,
+              f"templates/{name} carries exactly one version marker in its first 3 lines")
+        used = set(re.findall(r"(?<!\$)\{\{([A-Za-z]+)\}\}", text))
+        check(used <= keys, f"templates/{name} placeholders are schema keys or pluginVersion: {sorted(used - keys)}")
+        rendered = text
+        for key, value in PLANE_SAMPLE.items():
+            rendered = rendered.replace("{{" + key + "}}", value)
+        check(not re.search(r"(?<!\$)\{\{[A-Za-z]+\}\}", rendered), f"templates/{name} renders without leftover placeholders")
+
+    gitlab = PLANE / "templates" / "gitlab" / "plane.yml"
+    if gitlab.is_file():
+        text = gitlab.read_text(encoding="utf-8")
+        for needle in ("needs: []", "allow_failure: true", 'GIT_DEPTH: "0"', "plane-sync:", ".plane-kit/plane_sync.py"):
+            check(needle in text, f"gitlab/plane.yml contains {needle!r}")
+
+
+def test_plane_github_template():
+    print("plane-kit github template")
+    path = PLANE / "templates" / "github" / "plane-sync.yml"
+    if not path.is_file():
+        check(False, "templates/github/plane-sync.yml exists")
+        return
+    text = path.read_text(encoding="utf-8")
+    for needle in ("permissions:", "contents: read", "pull-requests: read", "fetch-depth: 0", "pull_request:",
+                   '"v*"', "GITHUB_TOKEN", "secrets.PLANE_API_KEY", "env.PLANE_API_KEY != ''", ".plane-kit/plane_sync.py",
+                   "continue-on-error: true"):
+        check(needle in text, f"github/plane-sync.yml contains {needle!r}")
+    for name in ("plane-init", "plane-sync-ci"):
+        command = (PLANE / "commands" / f"{name}.md").read_text(encoding="utf-8")
+        check(".github/workflows/plane-sync.yml" in command, f"{name}.md handles the GitHub workflow")
+        check("not supported" not in command, f"{name}.md no longer says GitHub is unsupported")
+
+
+def test_template_unittests():
+    print("plane-kit template unittests")
+    result = subprocess.run([sys.executable, "-B", "-W", "ignore", "-m", "unittest", "discover", "-s",
+                             str(PLANE / "templates" / "tests")], capture_output=True, text=True)
+    tail = result.stderr.strip().splitlines()[-1] if result.stderr.strip() else ""
+    check(result.returncode == 0, f"plane-kit template tests pass ({tail})")
+    if result.returncode != 0:
+        print(result.stderr[-2000:])
+
+
+def test_plane_prompts():
+    print("plane-kit prompts")
+    keys = set(load(PLANE_SCHEMA)["properties"])
+    skill = PLANE_SKILL.read_text(encoding="utf-8")
+    check(skill.startswith("---\nname: plane-task\ndescription:"), "plane-task SKILL.md has name + description frontmatter")
+    for key in sorted(set(re.findall(r"\{\{([A-Za-z0-9]+)\}\}", skill))):
+        check(key in keys, f"plane-task {{{{{key}}}}} is a schema key")
+    for needle in ("{{identifier}}", "{{projectId}}", "{{branchPattern}}", "{{readyState}}", "{{agentMaySet}}",
+                   "{{language}}", "Never create a work item unprompted", "Plane: {{identifier}}-<n>", "state list",
+                   "Never set `Done`"):
+        check(needle in skill, f"plane-task mentions {needle!r}")
+
+    commands = PLANE / "commands"
+    texts = {}
+    for name in ("plane-init", "plane-sync-ci"):
+        path = commands / f"{name}.md"
+        check(path.is_file(), f"commands/{name}.md exists")
+        if not path.is_file():
+            continue
+        texts[name] = path.read_text(encoding="utf-8")
+        check(texts[name].startswith("---\ndescription:"), f"{name}.md has description frontmatter")
+        for key in re.findall(r"^\| [^|]+ \| `(\w+)` \|", texts[name], flags=re.M):
+            check(key in keys, f"{name}.md config key `{key}` is in the schema")
+    if len(texts) == 2:
+        everything = skill + "".join(texts.values()) + "".join(
+            p.read_text(encoding="utf-8") for p in (PLANE / "templates").rglob("*") if p.is_file() and p.suffix in {".py", ".sh", ".yml"} and "tests" not in p.parts)
+        for key in sorted(keys - {"$schema"}):
+            check(key in everything, f"schema key `{key}` is used by a prompt or template")
+        init, sync = texts["plane-init"], texts["plane-sync-ci"]
+        for needle in ("PLANE_API_KEY", "never print", "stop and ask", "enabledPlugins", "extraKnownMarketplaces",
+                       ".plane-kit/plane_sync.py", ".gitlab/ci/plane.yml", "merge", "core.hooksPath"):
+            check(needle in init, f"plane-init.md mentions {needle!r}")
+        for needle in ("pluginVersion", "diff", "ask before overwriting", "locally modified"):
+            check(needle in sync, f"plane-sync-ci.md mentions {needle!r}")
+    if "plane-init" in texts:
+        init = texts["plane-init"]
+        for needle in ("masked, not protected", "chmod +x", "git update-index --chmod=+x", "missing optional key",
+                       "plane-sync:", '"source": {"source": "github"'):
+            check(needle in init, f"plane-init.md mentions {needle!r}")
+        check("protected, if the host supports it" not in init, "plane-init.md does not advise a Protected variable")
+    gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+    check({"__pycache__/", "*.pyc", ".serena"} <= set(gitignore.splitlines()), ".gitignore lists __pycache__/, *.pyc and .serena on their own lines")
+    tracked = subprocess.run(["git", "ls-files", "*.pyc"], cwd=ROOT, capture_output=True, text=True).stdout.split()
+    check(not tracked, f"no compiled .pyc files are tracked: {tracked}")
+    readme = (PLANE / "README.md").read_text(encoding="utf-8")
+    check("## Manual checks" in readme, "plane-kit README lists the manual checks")
+
+
 def test_prompts():
     print("prompts")
     schema = load(SCHEMA)["properties"]
@@ -180,6 +343,8 @@ def test_prompts():
         check("releaseKitBase" in mr_text, "git-mr reads branch.<name>.releaseKitBase")
         for label in ("## Review", "Up to date with", "Everything committed", "Tests:", "Breaking change:", "Look at:"):
             check(label in mr_text, f"git-mr.md review checklist has '{label}'")
+        for needle in (".claude/plane-kit.json", "Plane: <ID>", "plane-task", "Without that file, skip this"):
+            check(needle in mr_text, f"git-mr.md optional Plane step mentions {needle!r}")
         check("at most 15 lines" in mr_text, "git-mr.md caps the description at 15 lines")
         lines = len(mr_text.splitlines())
         check(lines <= GIT_MR_LINE_BUDGET, f"git-mr.md stays within its {GIT_MR_LINE_BUDGET}-line budget (now {lines})")
@@ -484,6 +649,11 @@ def main():
 
     test_manifests(args.tag)
     test_schema()
+    test_plane_schema()
+    test_plane_prompts()
+    test_plane_templates()
+    test_plane_github_template()
+    test_template_unittests()
     test_prompts()
     test_git_snippets()
     test_changelog_snippets()

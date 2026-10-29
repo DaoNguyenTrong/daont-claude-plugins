@@ -1,0 +1,10 @@
+{
+  "name": "plane-kit",
+  "version": "0.1.0",
+  "description": "Plane work-item workflow: plane-task skill, /plane-init and /plane-sync-ci commands, and a CI script that syncs MR/PR activity to Plane (GitLab and GitHub).",
+  "author": {
+    "name": "DaoNguyenTrong",
+    "email": "dao12a2@gmail.com"
+  },
+  "keywords": ["plane", "ci", "workflow", "gitlab", "github"]
+}

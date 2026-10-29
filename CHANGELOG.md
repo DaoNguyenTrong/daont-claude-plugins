@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [v2.1.0] - 2026-10-29
+
+### Added
+
+- plane-kit plugin with a `plane-task` skill, `/plane-init` and `/plane-sync-ci` commands, and a CI script linking MRs/PRs to Plane work items on GitLab and GitHub. (#12)
+- `git-mr` puts a `Plane: <ID>` line at the top of the description when `.claude/plane-kit.json` exists. (#12)
+
 ## [v2.0.2] - 2026-10-22
 
 ### Added
