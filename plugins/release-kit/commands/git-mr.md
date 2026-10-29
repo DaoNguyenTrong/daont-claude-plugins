@@ -69,6 +69,8 @@ Language: write every commit message, PR/MR title and description, and changelog
 
 **Title** — `<type>(<scope>): <short description>`, at most 72 characters. A single commit → reuse its subject. Several → one line covering the change as a whole, with the type of the most significant commit (`feat|fix|refactor|chore|docs|style|test`).
 
+**Plane (optional)** — if `.claude/plane-kit.json` exists, read its `identifier` and look for `<identifier>-<n>` (any case) in the current branch name. Found → make `Plane: <ID>` (for example `Plane: ACME-12`) the first line of the description, above `## Summary`; it does not count towards the line cap below. Not found → add nothing and do not guess an id from the commits. Without that file, skip this entirely.
+
 **Description** — at most 15 lines, exactly these three sections and nothing else (more detail goes in a comment). With `prExtraSections` set, add one `## <heading>` per entry after Review, in that order, filled from what the branch, commits and session show — `None` when nothing applies, never invented; the 15-line cap covers only the three standard sections:
 
 ```markdown
@@ -119,7 +121,7 @@ glab mr update <iid> --title "<title>" --description "$(cat <file>)"            
 
 ### 9. Finish
 
-Print the PR/MR URL. Say how it gets merged: if the change is docs-only and the project provides a gated merge command (for example `/git-accept`), run that command; otherwise review and merge belong to the team's process. After it is merged, run `/git-sync`, then delete the local branch (`git branch -d <current>`).
+Print the PR/MR URL. When a `Plane: <ID>` line was added, remind the user that the `plane-task` skill posts the summary comment on that work item. Say how it gets merged: if the change is docs-only and the project provides a gated merge command (for example `/git-accept`), run that command; otherwise review and merge belong to the team's process. After it is merged, run `/git-sync`, then delete the local branch (`git branch -d <current>`).
 
 ## Rules
 

@@ -12,6 +12,12 @@
       "source": "./plugins/release-kit",
       "description": "Release workflow shared across projects: git-release skill (driven by a per-project .claude/release-kit.json), plus git-commit, git-mr and git-sync commands.",
       "category": "workflow"
+    },
+    {
+      "name": "plane-kit",
+      "source": "./plugins/plane-kit",
+      "description": "Plane work-item workflow: plane-task skill, /plane-init and /plane-sync-ci commands, and a CI script that syncs MR/PR activity to Plane (GitLab and GitHub).",
+      "category": "workflow"
     }
   ]
 }

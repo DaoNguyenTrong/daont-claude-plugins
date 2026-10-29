@@ -1,0 +1,9 @@
+# plane-kit: v{{pluginVersion}}
+# Gộp vào mục `commit-msg` của lefthook.yml. Phải chạy trước các hook kiểm tra message (commitlint…)
+# để chúng thấy trailer `Refs:` vừa thêm.
+commit-msg:
+  piped: true
+  commands:
+    plane-ref:
+      priority: 1
+      run: bash .plane-kit/commit-msg-refs.sh {1}
