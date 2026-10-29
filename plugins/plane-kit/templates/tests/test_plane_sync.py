@@ -155,6 +155,51 @@ class PlanActionsTests(unittest.TestCase):
         self.assertEqual(s.plan_actions({**env, "CI_COMMIT_BRANCH": "dev"}, messages_of=lambda r: ""), [])
 
 
+class GitLabEventTests(unittest.TestCase):
+    MERGE = {**BASE_ENV, "CI_COMMIT_BRANCH": "dev", "CI_COMMIT_SHA": "b" * 40, "CI_COMMIT_SHORT_SHA": "bbbbbbbb",
+             "CI_COMMIT_BEFORE_SHA": "a" * 40,
+             "CI_COMMIT_MESSAGE": "Merge branch 'feature/acme-306-a' into 'dev'\n\nSee merge request g/p!310"}
+
+    def test_merge_request_event_is_a_review(self):
+        env = {**BASE_ENV, "CI_PIPELINE_SOURCE": "merge_request_event", "CI_MERGE_REQUEST_IID": "310",
+               "CI_MERGE_REQUEST_TITLE": "feat: x", "CI_MERGE_REQUEST_SOURCE_BRANCH_NAME": "feature/acme-1-a",
+               "CI_MERGE_REQUEST_TARGET_BRANCH_NAME": "dev"}
+        event = s.gitlab_event(env, CFG)
+        self.assertEqual((event.kind, event.change, event.target),
+                         ("review", (f"{PROJECT_URL}/-/merge_requests/310", "MR !310"), "dev"))
+        self.assertIn("feature/acme-1-a", event.scan)
+
+    def test_push_to_dev_with_a_merge_commit_is_a_merge_whose_primary_text_is_the_commit_message(self):
+        event = s.gitlab_event(self.MERGE, CFG)
+        self.assertEqual((event.kind, event.short, event.revision_range), ("merge", "bbbbbbbb", f"{'a' * 40}..{'b' * 40}"))
+        self.assertEqual(event.change, (f"{PROJECT_URL}/-/merge_requests/310", "MR !310"))
+        self.assertEqual(event.primary, (self.MERGE["CI_COMMIT_MESSAGE"],))
+        self.assertTrue(event.commit_url.endswith(f"/-/commit/{'b' * 40}"))
+
+    def test_null_before_sha_reads_only_the_pushed_commit(self):
+        event = s.gitlab_event({**self.MERGE, "CI_COMMIT_BEFORE_SHA": "0" * 40}, CFG)
+        self.assertEqual(event.revision_range, f"{'b' * 40}^!")
+
+    def test_push_to_dev_without_an_mr_has_no_change_and_no_primary(self):
+        event = s.gitlab_event({**self.MERGE, "CI_COMMIT_MESSAGE": "fix: z"}, CFG)
+        self.assertIsNone(event.change)
+        self.assertEqual(event.primary, ())
+
+    def test_release_tag(self):
+        event = s.gitlab_event({**BASE_ENV, "CI_COMMIT_TAG": "v1.4.4"}, CFG)
+        self.assertEqual((event.kind, event.tag), ("release", "v1.4.4"))
+        self.assertTrue(event.tag_url.endswith("/-/tags/v1.4.4"))
+
+    def test_other_branches_and_non_release_tags_give_no_event(self):
+        self.assertIsNone(s.gitlab_event({**BASE_ENV, "CI_COMMIT_BRANCH": "main"}, CFG))
+        self.assertIsNone(s.gitlab_event({**BASE_ENV, "CI_COMMIT_TAG": "v1.4.4-rc1"}, CFG))
+
+    def test_env_without_a_host_flag_plans_nothing(self):
+        env = {k: v for k, v in self.MERGE.items() if k != "GITLAB_CI"}
+        self.assertIsNone(s.detect_host(env))
+        self.assertEqual(s.plan_actions(env), [])
+
+
 class ApplyTests(unittest.TestCase):
     ACTION = {"ids": ["ACME-306"], "link": ("https://mr/1", "MR !1"), "marker": "MR !1 đã mở",
               "comment_html": "<p>MR !1 đã mở</p>", "ready_ids": []}

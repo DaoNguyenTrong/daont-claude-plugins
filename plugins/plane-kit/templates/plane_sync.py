@@ -137,57 +137,102 @@ def link(url: str, text: str) -> str:
     return f'<a href="{html.escape(url)}">{html.escape(text)}</a>'
 
 
+@dataclass(frozen=True)
+class Event:
+    """Sự kiện CI đã chuẩn hóa theo nền tảng; plan_actions chỉ đọc cấu trúc này."""
+    kind: str                                  # "review" | "merge" | "release"
+    run_link: str = ""                         # HTML <a> tới pipeline/run
+    change: tuple[str, str] | None = None      # (url, nhãn) của MR/PR, ví dụ "MR !310"
+    title: str = ""
+    target: str = ""
+    short: str = ""
+    commit_url: str = ""
+    tag: str = ""
+    tag_url: str = ""
+    revision_range: str = ""
+    scan: tuple[str, ...] = ()                 # mọi văn bản quét mã item
+    primary: tuple[str, ...] = ()              # văn bản quyết định item được chuyển state
+
+
+def detect_host(env: dict[str, str]) -> str | None:
+    if env.get("GITLAB_CI") == "true":
+        return "gitlab"
+    if env.get("GITHUB_ACTIONS") == "true":
+        return "github"
+    return None
+
+
+def gitlab_event(env: dict[str, str], config: Config) -> Event | None:
+    project_url = env.get("CI_PROJECT_URL", "")
+    run = link(env.get("CI_PIPELINE_URL", ""), f"pipeline #{env.get('CI_PIPELINE_ID', '')}")
+
+    if env.get("CI_PIPELINE_SOURCE") == "merge_request_event":
+        iid = env["CI_MERGE_REQUEST_IID"]
+        mr_url = f"{env.get('CI_MERGE_REQUEST_PROJECT_URL', project_url)}/-/merge_requests/{iid}"
+        title = env.get("CI_MERGE_REQUEST_TITLE", "")
+        return Event("review", run_link=run, change=(mr_url, f"MR !{iid}"), title=title,
+                     target=env.get("CI_MERGE_REQUEST_TARGET_BRANCH_NAME", ""),
+                     scan=(env.get("CI_MERGE_REQUEST_SOURCE_BRANCH_NAME", ""), title,
+                           env.get("CI_MERGE_REQUEST_DESCRIPTION", "")))
+
+    tag = env.get("CI_COMMIT_TAG", "")
+    if RELEASE_TAG.match(tag):
+        return Event("release", run_link=run, tag=tag, tag_url=f"{project_url}/-/tags/{tag}")
+
+    if env.get("CI_COMMIT_BRANCH") == config.dev_branch:
+        sha = env["CI_COMMIT_SHA"]
+        before = env.get("CI_COMMIT_BEFORE_SHA", "")
+        commit_message = env.get("CI_COMMIT_MESSAGE", "")
+        mr = MR_REF.search(commit_message)
+        change = (f"{project_url}/-/merge_requests/{mr.group(1)}", f"MR !{mr.group(1)}") if mr else None
+        # Chỉ item chính của MR (tên nhánh, title — phần GitLab ghi vào merge commit) được chuyển trạng thái;
+        # mã chỉ có trong Refs: của commit lẻ là việc liên quan, có thể chưa xong, nên chỉ được comment.
+        return Event("merge", run_link=run, change=change, short=env.get("CI_COMMIT_SHORT_SHA", sha[:8]),
+                     commit_url=f"{project_url}/-/commit/{sha}",
+                     revision_range=f"{before}..{sha}" if before and before != NULL_SHA else f"{sha}^!",
+                     scan=(commit_message,), primary=(commit_message,) if mr else ())
+    return None
+
+
+def read_event(env: dict[str, str], config: Config) -> Event | None:
+    host = detect_host(env)
+    return gitlab_event(env, config) if host == "gitlab" else None
+
+
 def plan_actions(env: dict[str, str], messages_of: Callable[[str], str] = git_messages,
                  tag_before: Callable[[str], str | None] = previous_tag,
                  config: Config | None = None) -> list[dict]:
     """Mỗi action: ids, link (url, title) hoặc None, marker + comment_html (comment chỉ đăng một lần theo
     marker), ready_ids — các item cần chuyển state sẵn sàng kiểm thử."""
     config = config or Config.from_env(env)
-    project_url = env.get("CI_PROJECT_URL", "")
-    pipeline = link(env.get("CI_PIPELINE_URL", ""), f"pipeline #{env.get('CI_PIPELINE_ID', '')}")
+    event = read_event(env, config)
+    if event is None:
+        return []
 
-    if env.get("CI_PIPELINE_SOURCE") == "merge_request_event":
-        iid = env["CI_MERGE_REQUEST_IID"]
-        title = env.get("CI_MERGE_REQUEST_TITLE", "")
-        mr_url = f"{env.get('CI_MERGE_REQUEST_PROJECT_URL', project_url)}/-/merge_requests/{iid}"
-        ids = find_ids(config, env.get("CI_MERGE_REQUEST_SOURCE_BRANCH_NAME"), title,
-                       env.get("CI_MERGE_REQUEST_DESCRIPTION"))
-        marker = f"MR !{iid} đã mở"
-        target = html.escape(env.get("CI_MERGE_REQUEST_TARGET_BRANCH_NAME", ""))
-        return [{"ids": ids, "link": (mr_url, f"MR !{iid}: {title}"), "marker": marker, "ready_ids": [],
-                 "comment_html": f"<p>{marker} vào <code>{target}</code>: {link(mr_url, title)}</p>"}]
+    if event.kind == "review":
+        url, label = event.change
+        marker = f"{label} đã mở"
+        target = html.escape(event.target)
+        return [{"ids": find_ids(config, *event.scan), "link": (url, f"{label}: {event.title}"), "marker": marker,
+                 "ready_ids": [],
+                 "comment_html": f"<p>{marker} vào <code>{target}</code>: {link(url, event.title)}</p>"}]
 
-    tag = env.get("CI_COMMIT_TAG", "")
-    if RELEASE_TAG.match(tag):
+    if event.kind == "release":
+        tag = event.tag
         before = tag_before(tag)
         ids = find_ids(config, messages_of(f"{before}..{tag}" if before else tag))
         marker = f"Đã có trong bản phát hành {tag}"
         return [{"ids": ids, "link": None, "marker": marker, "ready_ids": [],
-                 "comment_html": f"<p>{marker} ({link(f'{project_url}/-/tags/{tag}', tag)}, {pipeline}).</p>"}]
+                 "comment_html": f"<p>{marker} ({link(event.tag_url, tag)}, {event.run_link}).</p>"}]
 
-    if env.get("CI_COMMIT_BRANCH") == config.dev_branch:
-        sha = env["CI_COMMIT_SHA"]
-        short = env.get("CI_COMMIT_SHORT_SHA", sha[:8])
-        before = env.get("CI_COMMIT_BEFORE_SHA", "")
-        revision_range = f"{before}..{sha}" if before and before != NULL_SHA else f"{sha}^!"
-        commit_message = env.get("CI_COMMIT_MESSAGE", "")
-        ids = find_ids(config, messages_of(revision_range), commit_message)
-        mr = MR_REF.search(commit_message)
-        mr_link = None
-        extra = ""
-        # Chỉ item chính của MR (tên nhánh, title — phần GitLab ghi vào merge commit) được chuyển trạng thái;
-        # mã chỉ có trong Refs: của commit lẻ là việc liên quan, có thể chưa xong, nên chỉ được comment.
-        ready_ids = find_ids(config, commit_message) if mr else []
-        if mr:
-            mr_url = f"{project_url}/-/merge_requests/{mr.group(1)}"
-            mr_link = (mr_url, f"MR !{mr.group(1)}")
-            extra = f", {link(mr_url, f'MR !{mr.group(1)}')}"
-        marker = f"Đã merge vào {config.dev_branch} ở commit {short}"
-        commit = link(f"{project_url}/-/commit/{sha}", short)
-        return [{"ids": ids, "link": mr_link, "marker": marker, "ready_ids": ready_ids,
-                 "comment_html": f"<p>Đã merge vào <code>{html.escape(config.dev_branch)}</code> ở commit {commit}{extra}, {pipeline}.</p>"}]
-
-    return []
+    ids = find_ids(config, messages_of(event.revision_range), *event.scan)
+    extra = f", {link(*event.change)}" if event.change else ""
+    marker = f"Đã merge vào {config.dev_branch} ở commit {event.short}"
+    commit = link(event.commit_url, event.short)
+    return [{"ids": ids, "link": event.change and (event.change[0], event.change[1]), "marker": marker,
+             "ready_ids": find_ids(config, *event.primary),
+             "comment_html": f"<p>Đã merge vào <code>{html.escape(config.dev_branch)}</code> ở commit "
+                             f"{commit}{extra}, {event.run_link}.</p>"}]
 
 
 def apply(plane: Plane, actions: Iterable[dict], log: Callable[[str], None] = print) -> None:
