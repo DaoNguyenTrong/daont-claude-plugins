@@ -200,6 +200,106 @@ class GitLabEventTests(unittest.TestCase):
         self.assertEqual(s.plan_actions(env), [])
 
 
+REPO_URL = "https://github.example/o/r"
+GH_ENV = {"GITHUB_ACTIONS": "true", "PLANE_IDENTIFIER": "ACME", "GITHUB_SERVER_URL": "https://github.example",
+          "GITHUB_REPOSITORY": "o/r", "GITHUB_RUN_ID": "5", "GITHUB_EVENT_PATH": "event.json"}
+
+
+def gh_pr(title="feat: x", head_ref="feature/acme-3-x", body="Plane: ACME-3"):
+    return {"title": title, "head_ref": head_ref, "body": body}
+
+
+def gh_push(message, before="a" * 40, after="b" * 40, ref="refs/heads/dev", pr=None, fetched=None):
+    """Trả (env, read_json, fetch_pr, calls) cho một sự kiện push GitHub."""
+    calls = []
+
+    def fetch(env, number):
+        calls.append(number)
+        if isinstance(pr, Exception):
+            raise pr
+        return pr or gh_pr()
+
+    payload = {"before": before, "after": after, "head_commit": {"message": message}}
+    return {**GH_ENV, "GITHUB_EVENT_NAME": "push", "GITHUB_REF": ref}, (lambda path: payload), fetch, calls
+
+
+class GitHubEventTests(unittest.TestCase):
+    def test_pull_request_event_is_a_review_without_calling_the_api(self):
+        payload = {"pull_request": {"number": 7, "title": "feat: x", "body": "Plane: ACME-7",
+                                    "html_url": f"{REPO_URL}/pull/7", "head": {"ref": "feature/acme-1-a"},
+                                    "base": {"ref": "dev"}}}
+        env = {**GH_ENV, "GITHUB_EVENT_NAME": "pull_request", "GITHUB_REF": "refs/pull/7/merge"}
+        calls = []
+        event = s.github_event(env, CFG, read_json=lambda path: payload, fetch_pr=lambda e, n: calls.append(n))
+        self.assertEqual((event.kind, event.change, event.target),
+                         ("review", (f"{REPO_URL}/pull/7", "PR #7"), "dev"))
+        self.assertEqual(event.scan, ("feature/acme-1-a", "feat: x", "Plane: ACME-7"))
+        self.assertIn("/actions/runs/5", event.run_link)
+        self.assertEqual(calls, [])
+
+    def test_merge_commit_push_reads_the_pr_through_the_api(self):
+        env, read, fetch, calls = gh_push("Merge pull request #45 from o/feature/acme-3-x\n\nfeat: x")
+        event = s.github_event(env, CFG, read_json=read, fetch_pr=fetch)
+        self.assertEqual(calls, [45])
+        self.assertEqual((event.kind, event.short, event.revision_range), ("merge", "bbbbbbbb", f"{'a' * 40}..{'b' * 40}"))
+        self.assertEqual(event.change, (f"{REPO_URL}/pull/45", "PR #45"))
+        self.assertEqual(event.primary, ("feature/acme-3-x", "feat: x", "Plane: ACME-3"))
+        self.assertEqual(event.commit_url, f"{REPO_URL}/commit/{'b' * 40}")
+
+    def test_squash_subject_suffix_gives_the_pr_number(self):
+        env, read, fetch, calls = gh_push("feat: add x (#67)\n\nbody")
+        self.assertEqual(s.github_event(env, CFG, read_json=read, fetch_pr=fetch).change[1], "PR #67")
+        self.assertEqual(calls, [67])
+
+    def test_an_inner_number_in_the_squash_subject_is_not_the_pr(self):
+        env, read, fetch, calls = gh_push("fix: handle (#12) refs (#99)\n\nbody (#5)")
+        self.assertEqual(s.github_event(env, CFG, read_json=read, fetch_pr=fetch).change[1], "PR #99")
+        self.assertEqual(calls, [99])
+
+    def test_only_the_plane_line_of_the_body_is_primary(self):
+        pr = gh_pr(head_ref="feature/acme-3-x", title="feat: x", body="Related to ACME-5\nPlane: ACME-3")
+        env, read, fetch, _ = gh_push("feat: x (#8)", pr=pr)
+        event = s.github_event(env, CFG, read_json=read, fetch_pr=fetch)
+        self.assertEqual(s.find_ids(CFG, *event.primary), ["ACME-3"])
+        self.assertIn("ACME-5", s.find_ids(CFG, *event.scan))
+
+    def test_a_failing_pr_api_keeps_the_comment_but_moves_nothing(self):
+        env, read, fetch, _ = gh_push("feat: x (#8)\n\nRefs: ACME-3", pr=urllib.error.URLError("boom"))
+        event = s.github_event(env, CFG, read_json=read, fetch_pr=fetch)
+        self.assertEqual((event.kind, event.change[1], event.primary), ("merge", "PR #8", ()))
+        [action] = s.plan_actions(env, messages_of=lambda r: "", config=CFG, read_json=read, fetch_pr=fetch)
+        self.assertEqual((action["ready_ids"], action["ids"]), ([], ["ACME-3"]))
+        self.assertEqual(action["link"], (f"{REPO_URL}/pull/8", "PR #8"))
+
+    def test_push_without_a_pr_number_has_no_change_and_no_primary(self):
+        env, read, fetch, calls = gh_push("fix: direct push")
+        event = s.github_event(env, CFG, read_json=read, fetch_pr=fetch)
+        self.assertEqual((event.change, event.primary, calls), (None, (), []))
+
+    def test_new_branch_push_reads_only_the_pushed_commit(self):
+        env, read, fetch, _ = gh_push("fix: z", before="0" * 40)
+        self.assertEqual(s.github_event(env, CFG, read_json=read, fetch_pr=fetch).revision_range, f"{'b' * 40}^!")
+
+    def test_release_tag_url_uses_tree(self):
+        env, read, fetch, _ = gh_push("x", ref="refs/tags/v1.2.3")
+        event = s.github_event(env, CFG, read_json=read, fetch_pr=fetch)
+        self.assertEqual((event.kind, event.tag, event.tag_url), ("release", "v1.2.3", f"{REPO_URL}/tree/v1.2.3"))
+
+    def test_other_tags_and_branches_give_no_event(self):
+        for ref in ("refs/tags/v1.2.3-rc1", "refs/heads/other"):
+            env, read, fetch, _ = gh_push("x", ref=ref)
+            self.assertIsNone(s.github_event(env, CFG, read_json=read, fetch_pr=fetch))
+
+    def test_plan_actions_for_a_squash_merge_moves_only_the_primary_item(self):
+        pr = gh_pr(head_ref="feature/acme-3-x", title="feat: x", body="Plane: ACME-3")
+        env, read, fetch, _ = gh_push("feat: x (#8)\n\nRefs: ACME-9", pr=pr)
+        [action] = s.plan_actions(env, messages_of=lambda r: "Refs: ACME-9", config=CFG, read_json=read, fetch_pr=fetch)
+        self.assertEqual(action["ids"], ["ACME-9", "ACME-3"])
+        self.assertEqual(action["ready_ids"], ["ACME-3"])
+        self.assertEqual(action["marker"], "Đã merge vào dev ở commit bbbbbbbb")
+        self.assertEqual(action["link"], (f"{REPO_URL}/pull/8", "PR #8"))
+
+
 class ApplyTests(unittest.TestCase):
     ACTION = {"ids": ["ACME-306"], "link": ("https://mr/1", "MR !1"), "marker": "MR !1 đã mở",
               "comment_html": "<p>MR !1 đã mở</p>", "ready_ids": []}

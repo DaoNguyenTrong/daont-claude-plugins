@@ -20,6 +20,9 @@ from dataclasses import dataclass
 from typing import Callable, Iterable
 
 MR_REF = re.compile(r"See merge request \S+!(\d+)")
+GITHUB_MERGE_REF = re.compile(r"^Merge pull request #(\d+)\b")
+GITHUB_SQUASH_REF = re.compile(r"\(#(\d+)\)\s*$")
+PLANE_LINE = re.compile(r"^\s*Plane:.*$", re.IGNORECASE | re.MULTILINE)
 RELEASE_TAG = re.compile(r"^v\d+\.\d+\.\d+$")
 NULL_SHA = "0" * 40
 # Item tester đã nhận (Testing, Pending), đã xong hay đã hủy thì không kéo về state sẵn sàng.
@@ -194,18 +197,91 @@ def gitlab_event(env: dict[str, str], config: Config) -> Event | None:
     return None
 
 
-def read_event(env: dict[str, str], config: Config) -> Event | None:
+def load_json_file(path: str) -> dict:
+    with open(path, encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def github_pr(env: dict[str, str], number: int) -> dict:
+    """Title, nhánh nguồn và thân của PR qua API; thiếu GITHUB_TOKEN hoặc HTTP lỗi thì ném."""
+    token = env.get("GITHUB_TOKEN", "")
+    if not token:
+        raise RuntimeError("GITHUB_TOKEN chưa đặt")
+    api = env.get("GITHUB_API_URL", "https://api.github.com").rstrip("/")
+    request = urllib.request.Request(
+        f"{api}/repos/{env['GITHUB_REPOSITORY']}/pulls/{number}",
+        headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"})
+    with urllib.request.urlopen(request, timeout=15) as response:
+        data = json.loads(response.read())
+    return {"title": data.get("title") or "", "head_ref": (data.get("head") or {}).get("ref") or "",
+            "body": data.get("body") or ""}
+
+
+def github_event(env: dict[str, str], config: Config, read_json: Callable[[str], dict] = load_json_file,
+                 fetch_pr: Callable[[dict, int], dict] = github_pr) -> Event | None:
+    repo_url = f"{env.get('GITHUB_SERVER_URL', 'https://github.com').rstrip('/')}/{env.get('GITHUB_REPOSITORY', '')}"
+    run_id = env.get("GITHUB_RUN_ID", "")
+    run = link(f"{repo_url}/actions/runs/{run_id}", f"run #{run_id}")
+    ref = env.get("GITHUB_REF", "")
+
+    if env.get("GITHUB_EVENT_NAME") == "pull_request":
+        pr = read_json(env["GITHUB_EVENT_PATH"])["pull_request"]
+        title = pr.get("title") or ""
+        return Event("review", run_link=run, change=(pr["html_url"], f"PR #{pr['number']}"), title=title,
+                     target=(pr.get("base") or {}).get("ref", ""),
+                     scan=((pr.get("head") or {}).get("ref", ""), title, pr.get("body") or ""))
+
+    if env.get("GITHUB_EVENT_NAME") != "push":
+        return None
+
+    if ref.startswith("refs/tags/"):
+        tag = ref[len("refs/tags/"):]
+        if not RELEASE_TAG.match(tag):
+            return None
+        return Event("release", run_link=run, tag=tag, tag_url=f"{repo_url}/tree/{tag}")
+
+    if ref == f"refs/heads/{config.dev_branch}":
+        push = read_json(env["GITHUB_EVENT_PATH"])
+        after, before = push.get("after", ""), push.get("before", "")
+        message = (push.get("head_commit") or {}).get("message", "")
+        subject = message.splitlines()[0] if message else ""
+        found = GITHUB_MERGE_REF.search(subject) or GITHUB_SQUASH_REF.search(subject)
+        change, scan, primary = None, (message,), ()
+        if found:
+            number = int(found.group(1))
+            change = (f"{repo_url}/pull/{number}", f"PR #{number}")
+            try:
+                pr = fetch_pr(env, number)
+            except Exception as error:  # noqa: BLE001 — không biết item chính thì chỉ comment, không chuyển state
+                print(f"PR #{number}: không đọc được qua API ({error}) — chỉ comment, không chuyển state.")
+            else:
+                plane_lines = tuple(PLANE_LINE.findall(pr["body"]))
+                primary = (pr["head_ref"], pr["title"], *plane_lines)
+                scan = (pr["head_ref"], pr["title"], pr["body"], message)
+        return Event("merge", run_link=run, change=change, short=after[:8], commit_url=f"{repo_url}/commit/{after}",
+                     revision_range=f"{before}..{after}" if before and before != NULL_SHA else f"{after}^!",
+                     scan=scan, primary=primary)
+    return None
+
+
+def read_event(env: dict[str, str], config: Config, read_json: Callable[[str], dict] = load_json_file,
+               fetch_pr: Callable[[dict, int], dict] = github_pr) -> Event | None:
     host = detect_host(env)
-    return gitlab_event(env, config) if host == "gitlab" else None
+    if host == "gitlab":
+        return gitlab_event(env, config)
+    if host == "github":
+        return github_event(env, config, read_json, fetch_pr)
+    return None
 
 
 def plan_actions(env: dict[str, str], messages_of: Callable[[str], str] = git_messages,
                  tag_before: Callable[[str], str | None] = previous_tag,
-                 config: Config | None = None) -> list[dict]:
+                 config: Config | None = None, read_json: Callable[[str], dict] = load_json_file,
+                 fetch_pr: Callable[[dict, int], dict] = github_pr) -> list[dict]:
     """Mỗi action: ids, link (url, title) hoặc None, marker + comment_html (comment chỉ đăng một lần theo
     marker), ready_ids — các item cần chuyển state sẵn sàng kiểm thử."""
     config = config or Config.from_env(env)
-    event = read_event(env, config)
+    event = read_event(env, config, read_json, fetch_pr)
     if event is None:
         return []
 
