@@ -189,6 +189,39 @@ def test_plane_schema():
           "README tells users to run /plane-sync-ci after plugin update")
 
 
+PLANE_SAMPLE = {"identifier": "ACME", "projectId": "54c5b126-c344-42ef-a1db-82b20c1763d8", "workspaceSlug": "ws",
+                "baseUrl": "https://plane.example", "host": "gitlab", "devBranch": "dev",
+                "readyState": "Ready For Testing", "movableStates": "Backlog,Todo,In Progress",
+                "pluginVersion": "0.1.0"}
+PLANE_VENDORED = ["plane_sync.py", "commit-msg-refs.sh", "gitlab/plane.yml", "lefthook-refs.yml"]
+
+
+def test_plane_templates():
+    print("plane-kit templates")
+    keys = set(load(PLANE_SCHEMA)["properties"]) | {"pluginVersion"}
+    for name in PLANE_VENDORED:
+        path = PLANE / "templates" / name
+        check(path.is_file(), f"templates/{name} exists")
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8")
+        head = text.splitlines()[:3]
+        check(head.count("# plane-kit: v{{pluginVersion}}") == 1 and text.count("# plane-kit: v") == 1,
+              f"templates/{name} carries exactly one version marker in its first 3 lines")
+        used = set(re.findall(r"(?<!\$)\{\{([A-Za-z]+)\}\}", text))
+        check(used <= keys, f"templates/{name} placeholders are schema keys or pluginVersion: {sorted(used - keys)}")
+        rendered = text
+        for key, value in PLANE_SAMPLE.items():
+            rendered = rendered.replace("{{" + key + "}}", value)
+        check(not re.search(r"(?<!\$)\{\{[A-Za-z]+\}\}", rendered), f"templates/{name} renders without leftover placeholders")
+
+    gitlab = PLANE / "templates" / "gitlab" / "plane.yml"
+    if gitlab.is_file():
+        text = gitlab.read_text(encoding="utf-8")
+        for needle in ("needs: []", "allow_failure: true", 'GIT_DEPTH: "0"', "plane-sync:", ".plane-kit/plane_sync.py"):
+            check(needle in text, f"gitlab/plane.yml contains {needle!r}")
+
+
 def test_template_unittests():
     print("plane-kit template unittests")
     result = subprocess.run([sys.executable, "-W", "ignore", "-m", "unittest", "discover", "-s",
@@ -563,6 +596,7 @@ def main():
     test_schema()
     test_plane_schema()
     test_plane_prompts()
+    test_plane_templates()
     test_template_unittests()
     test_prompts()
     test_git_snippets()
