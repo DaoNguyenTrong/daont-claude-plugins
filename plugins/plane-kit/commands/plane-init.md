@@ -28,7 +28,7 @@ An invalid file is reported key by key; stop and ask rather than rewriting it.
 
 ## 1. Copy the files
 
-Take the plugin version from `.claude-plugin/plugin.json` (`pluginVersion`). Render each template by replacing `{{key}}` with the config value (`movableStates` joined with commas, `pluginVersion` as above); leave `${{ ... }}` untouched. Targets are fixed:
+Render each template by replacing `{{key}}` with the config value (`movableStates` joined with commas, `pluginVersion` is `version` from `.claude-plugin/plugin.json`). A missing optional key renders with its default from the table in step 0, never as a literal `{{key}}`; leave `${{ ... }}` untouched. Targets are fixed:
 
 | Template (`templates/`) | Written to | When |
 | --- | --- | --- |
@@ -49,16 +49,16 @@ For each target:
 Then wire the hooks and CI:
 
 - GitHub: nothing to include; tell the user to add the `PLANE_API_KEY` repository secret (the workflow declares `contents: read` and `pull-requests: read` itself).
-- GitLab: tell the user to add `include: - local: .gitlab/ci/plane.yml` to `.gitlab-ci.yml`, and to give the job the `stage:` and `tags:` their runners need. Do not edit `.gitlab-ci.yml` unasked.
-- Commit hook: if `lefthook.yml` exists, show the rendered `lefthook-refs.yml` block and merge it into `commit-msg` after the user agrees (keep its `priority: 1` so the hook runs before message linters). Otherwise write `.plane-kit/commit-msg-refs.sh` also as `.githooks/commit-msg` (same marker rule) and tell the user to run `git config core.hooksPath .githooks`.
+- GitLab: tell the user to add `include: - local: .gitlab/ci/plane.yml` to `.gitlab-ci.yml`. If their runners need `stage:` or `tags:`, they override them there with a job of the same name (`plane-sync:` with just those keys; GitLab merges it with the included job), so the marked file stays unedited. Do not edit `.gitlab-ci.yml` unasked.
+- Commit hook: if `lefthook.yml` exists, show the rendered `lefthook-refs.yml` block and merge it into `commit-msg` after the user agrees (keep its `priority: 1` so the hook runs before message linters). If the lefthook block is already there, leave it. Otherwise write `.plane-kit/commit-msg-refs.sh` also as `.githooks/commit-msg` (same marker rule), run `chmod +x` on it and `git update-index --chmod=+x .githooks/commit-msg` (git ignores a hook that is not executable), and tell the user to run `git config core.hooksPath .githooks` — warning that this stops git from running hooks in `.git/hooks` or husky.
 
 ## 2. Enable the plugin for the team
 
-Merge into `.claude/settings.json`, keeping every other key: `"plane-kit@daont-claude-plugins": true` under `enabledPlugins`, and the `daont-claude-plugins` entry under `extraKnownMarketplaces` (`source: github`, `repo: DaoNguyenTrong/daont-claude-plugins`) if it is not already there. Never overwrite the file.
+Merge into `.claude/settings.json`, keeping every other key: `"plane-kit@daont-claude-plugins": true` under `enabledPlugins`, and, if it is not already there, this entry under `extraKnownMarketplaces`: `"daont-claude-plugins": {"source": {"source": "github", "repo": "DaoNguyenTrong/daont-claude-plugins"}}`. Never overwrite the file.
 
 ## 3. The API key
 
-Tell the user to create a masked (and protected, if the host supports it) CI variable named `PLANE_API_KEY` in the repo settings. This command never accepts the key as an argument, never print it, and never writes it to a file.
+Tell the user to create a CI variable named `PLANE_API_KEY` in the repo settings: on GitLab masked, not protected (MR pipelines on unprotected `feature/*` branches do not receive protected variables, so link and comment on MR open would silently never run); on GitHub a repository secret. This command never accepts the key as an argument, never print it, and never writes it to a file.
 
 ## 4. Report
 
@@ -68,4 +68,4 @@ List what was written, what was left alone and why, and the steps the user still
 
 - Write only new files or files that carry a plane-kit marker; for anything else stop and ask
 - Never print, log or store `PLANE_API_KEY`
-- Never edit CI configuration files other than the rendered `plane.yml`
+- Never edit CI configuration files other than the rendered `plane.yml` / `plane-sync.yml`

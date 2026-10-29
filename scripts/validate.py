@@ -242,7 +242,7 @@ def test_plane_github_template():
 
 def test_template_unittests():
     print("plane-kit template unittests")
-    result = subprocess.run([sys.executable, "-W", "ignore", "-m", "unittest", "discover", "-s",
+    result = subprocess.run([sys.executable, "-B", "-W", "ignore", "-m", "unittest", "discover", "-s",
                              str(PLANE / "templates" / "tests")], capture_output=True, text=True)
     tail = result.stderr.strip().splitlines()[-1] if result.stderr.strip() else ""
     check(result.returncode == 0, f"plane-kit template tests pass ({tail})")
@@ -284,6 +284,16 @@ def test_plane_prompts():
             check(needle in init, f"plane-init.md mentions {needle!r}")
         for needle in ("pluginVersion", "diff", "ask before overwriting", "locally modified"):
             check(needle in sync, f"plane-sync-ci.md mentions {needle!r}")
+    if "plane-init" in texts:
+        init = texts["plane-init"]
+        for needle in ("masked, not protected", "chmod +x", "git update-index --chmod=+x", "missing optional key",
+                       "plane-sync:", '"source": {"source": "github"'):
+            check(needle in init, f"plane-init.md mentions {needle!r}")
+        check("protected, if the host supports it" not in init, "plane-init.md does not advise a Protected variable")
+    gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+    check("__pycache__/" in gitignore, ".gitignore ignores __pycache__/")
+    tracked = subprocess.run(["git", "ls-files", "*.pyc"], cwd=ROOT, capture_output=True, text=True).stdout.split()
+    check(not tracked, f"no compiled .pyc files are tracked: {tracked}")
     readme = (PLANE / "README.md").read_text(encoding="utf-8")
     check("## Manual checks" in readme, "plane-kit README lists the manual checks")
 

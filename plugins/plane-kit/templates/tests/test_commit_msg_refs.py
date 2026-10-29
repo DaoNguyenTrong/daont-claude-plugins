@@ -49,6 +49,14 @@ class CommitMsgRefsTests(unittest.TestCase):
         message = "feat: add x\n"
         self.assertEqual(self.run_hook("feature/xacme-12-x", message), message)
 
+    def test_ignores_ids_with_letters_or_underscores_glued_on_either_side(self):
+        message = "feat: add x\n"
+        for branch in ("feature/acme-1x-foo", "feature/acme-12a", "feature/my_acme-3-x"):
+            self.assertEqual(self.run_hook(branch, message), message, branch)
+
+    def test_reads_the_id_at_the_end_of_the_branch_name(self):
+        self.assertIn("Refs: ACME-7", self.run_hook("fix/acme-7", "fix: y\n"))
+
     def test_ignores_a_branch_without_a_number(self):
         message = "feat: add x\n"
         self.assertEqual(self.run_hook("feature/acme--x", message), message)

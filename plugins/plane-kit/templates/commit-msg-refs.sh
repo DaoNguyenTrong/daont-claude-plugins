@@ -10,8 +10,8 @@ msg_file="$1"
 git rev-parse -q --verify MERGE_HEAD >/dev/null && exit 0
 
 branch=$(git symbolic-ref --short -q HEAD || true)
-# Biên từ: `xacme-1` không phải mã `ACME-1`.
-id=$(printf '%s' "$branch" | grep -oiE '(^|[^[:alnum:]]){{identifier}}-[0-9]+' | head -n1 | sed 's/^[^[:alnum:]]//' | tr '[:lower:]' '[:upper:]' || true)
+# Biên từ hai phía như `\b`: `xacme-1`, `my_acme-1` và `acme-1x` không phải mã `ACME-1`.
+id=$(printf '%s' "$branch" | grep -oiE '(^|[^[:alnum:]_]){{identifier}}-[0-9]+([^[:alnum:]_]|$)' | head -n1 | grep -oiE '{{identifier}}-[0-9]+' | tr '[:lower:]' '[:upper:]' || true)
 [ -n "$id" ] || exit 0
 
 # File còn các dòng comment git soạn cho editor (kể cả "# On branch feature/…"), phải bỏ trước khi xét
