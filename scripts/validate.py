@@ -189,6 +189,16 @@ def test_plane_schema():
           "README tells users to run /plane-sync-ci after plugin update")
 
 
+def test_template_unittests():
+    print("plane-kit template unittests")
+    result = subprocess.run([sys.executable, "-W", "ignore", "-m", "unittest", "discover", "-s",
+                             str(PLANE / "templates" / "tests")], capture_output=True, text=True)
+    tail = result.stderr.strip().splitlines()[-1] if result.stderr.strip() else ""
+    check(result.returncode == 0, f"plane-kit template tests pass ({tail})")
+    if result.returncode != 0:
+        print(result.stderr[-2000:])
+
+
 def test_plane_prompts():
     print("plane-kit prompts")
     keys = set(load(PLANE_SCHEMA)["properties"])
@@ -553,6 +563,7 @@ def main():
     test_schema()
     test_plane_schema()
     test_plane_prompts()
+    test_template_unittests()
     test_prompts()
     test_git_snippets()
     test_changelog_snippets()
