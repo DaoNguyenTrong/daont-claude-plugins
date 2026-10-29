@@ -24,6 +24,7 @@ PLUGIN = ROOT / "plugins" / "release-kit"
 SCHEMA = PLUGIN / "release-kit.schema.json"
 PLANE = ROOT / "plugins" / "plane-kit"
 PLANE_SCHEMA = PLANE / "plane-kit.schema.json"
+PLANE_SKILL = PLANE / "skills" / "plane-task" / "SKILL.md"
 SKILL = PLUGIN / "skills" / "git-release" / "SKILL.md"
 COMMANDS = PLUGIN / "commands"
 SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
@@ -186,6 +187,19 @@ def test_plane_schema():
         check(not errors, f"README example {i} validates" + (f": {errors[0]}" if errors else ""))
     check("/plane-sync-ci" in readme and "plugin update" in readme,
           "README tells users to run /plane-sync-ci after plugin update")
+
+
+def test_plane_prompts():
+    print("plane-kit prompts")
+    keys = set(load(PLANE_SCHEMA)["properties"])
+    skill = PLANE_SKILL.read_text(encoding="utf-8")
+    check(skill.startswith("---\nname: plane-task\ndescription:"), "plane-task SKILL.md has name + description frontmatter")
+    for key in sorted(set(re.findall(r"\{\{([A-Za-z0-9]+)\}\}", skill))):
+        check(key in keys, f"plane-task {{{{{key}}}}} is a schema key")
+    for needle in ("{{identifier}}", "{{projectId}}", "{{branchPattern}}", "{{readyState}}", "{{agentMaySet}}",
+                   "{{language}}", "Never create a work item unprompted", "Plane: {{identifier}}-<n>", "state list",
+                   "Never set `Done`"):
+        check(needle in skill, f"plane-task mentions {needle!r}")
 
 
 def test_prompts():
@@ -538,6 +552,7 @@ def main():
     test_manifests(args.tag)
     test_schema()
     test_plane_schema()
+    test_plane_prompts()
     test_prompts()
     test_git_snippets()
     test_changelog_snippets()
