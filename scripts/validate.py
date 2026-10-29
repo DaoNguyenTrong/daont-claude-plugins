@@ -29,7 +29,7 @@ SKILL = PLUGIN / "skills" / "git-release" / "SKILL.md"
 COMMANDS = PLUGIN / "commands"
 SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
 CATEGORIES = ["Added", "Changed", "Deprecated", "Removed", "Fixed", "Security"]
-GIT_MR_LINE_BUDGET = 130
+GIT_MR_LINE_BUDGET = 140
 LANGUAGE_RULE = ("Language: write every commit message, PR/MR title and description, "
                  "and changelog entry in English, whatever language the user talks to you in.")
 
@@ -333,6 +333,8 @@ def test_prompts():
         check("releaseKitBase" in mr_text, "git-mr reads branch.<name>.releaseKitBase")
         for label in ("## Review", "Up to date with", "Everything committed", "Tests:", "Breaking change:", "Look at:"):
             check(label in mr_text, f"git-mr.md review checklist has '{label}'")
+        for needle in (".claude/plane-kit.json", "Plane: <ID>", "plane-task", "Without that file, skip this"):
+            check(needle in mr_text, f"git-mr.md optional Plane step mentions {needle!r}")
         check("at most 15 lines" in mr_text, "git-mr.md caps the description at 15 lines")
         lines = len(mr_text.splitlines())
         check(lines <= GIT_MR_LINE_BUDGET, f"git-mr.md stays within its {GIT_MR_LINE_BUDGET}-line budget (now {lines})")
