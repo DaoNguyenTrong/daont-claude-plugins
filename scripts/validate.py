@@ -291,7 +291,7 @@ def test_plane_prompts():
             check(needle in init, f"plane-init.md mentions {needle!r}")
         check("protected, if the host supports it" not in init, "plane-init.md does not advise a Protected variable")
     gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
-    check("__pycache__/" in gitignore, ".gitignore ignores __pycache__/")
+    check({"__pycache__/", "*.pyc", ".serena"} <= set(gitignore.splitlines()), ".gitignore lists __pycache__/, *.pyc and .serena on their own lines")
     tracked = subprocess.run(["git", "ls-files", "*.pyc"], cwd=ROOT, capture_output=True, text=True).stdout.split()
     check(not tracked, f"no compiled .pyc files are tracked: {tracked}")
     readme = (PLANE / "README.md").read_text(encoding="utf-8")

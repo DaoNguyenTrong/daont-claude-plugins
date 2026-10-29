@@ -1,5 +1,6 @@
 plugins/*/**/results/
 *.local.json
 .DS_Store
-.serena__pycache__/
+.serena
+__pycache__/
 *.pyc
