@@ -22,6 +22,8 @@ except ImportError:
 ROOT = Path(__file__).resolve().parent.parent
 PLUGIN = ROOT / "plugins" / "release-kit"
 SCHEMA = PLUGIN / "release-kit.schema.json"
+PLANE = ROOT / "plugins" / "plane-kit"
+PLANE_SCHEMA = PLANE / "plane-kit.schema.json"
 SKILL = PLUGIN / "skills" / "git-release" / "SKILL.md"
 COMMANDS = PLUGIN / "commands"
 SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
@@ -79,7 +81,8 @@ def test_manifests(tag):
             data = load(manifest)
             check(data["name"] == entry["name"], f"{entry['name']}: plugin.json name matches marketplace")
             check(bool(SEMVER.match(data["version"])), f"{entry['name']}: version {data['version']} is X.Y.Z")
-            if tag:
+            # the repo's vX.Y.Z tags are release-kit's; other plugins version independently
+            if tag and entry["name"] == "release-kit":
                 check(data["version"] == tag.lstrip("v"), f"{entry['name']}: version {data['version']} matches tag {tag}")
 
 
@@ -133,6 +136,56 @@ def test_schema():
         check(validator.is_valid(doc), f"accepts: {name}")
     for name, doc in bad:
         check(not validator.is_valid(doc), f"rejects: {name}")
+
+
+def test_plane_schema():
+    print("plane-kit schema")
+    market = load(ROOT / ".claude-plugin" / "marketplace.json")
+    check("plane-kit" in [e["name"] for e in market["plugins"]], "plane-kit is listed in the marketplace")
+    schema = load(PLANE_SCHEMA)
+    Draft7Validator.check_schema(schema)
+    check(True, "plane-kit schema is valid draft-07")
+    validator = Draft7Validator(schema)
+
+    base = {"identifier": "ACME", "projectId": "54c5b126-c344-42ef-a1db-82b20c1763d8", "workspaceSlug": "ws",
+            "baseUrl": "https://plane.example", "host": "gitlab"}
+    good = [
+        ("required keys only", base),
+        ("host github", {**base, "host": "github"}),
+        ("every optional key", {**base, "devBranch": "develop", "readyState": "QA", "movableStates": ["Todo"],
+                                "agentMaySet": ["inProgress", "ready"], "language": "en",
+                                "branchPattern": "feature/<identifier-lowercase>-<n>-<slug>"}),
+        ("agentMaySet empty", {**base, "agentMaySet": []}),
+        ("agentMaySet narrowed", {**base, "agentMaySet": ["inProgress"]}),
+    ]
+    bad = [
+        ("unknown key", {**base, "devbranch": "dev"}),
+        ("missing host", {k: v for k, v in base.items() if k != "host"}),
+        ("unknown host", {**base, "host": "bitbucket"}),
+        ("agentMaySet Done", {**base, "agentMaySet": ["Done"]}),
+        ("agentMaySet done", {**base, "agentMaySet": ["done"]}),
+        ("agentMaySet duplicate", {**base, "agentMaySet": ["inProgress", "inProgress"]}),
+        ("agentMaySet outside the default policy", {**base, "agentMaySet": ["ready", "other"]}),
+        ("lowercase identifier", {**base, "identifier": "acme"}),
+        ("empty identifier", {**base, "identifier": ""}),
+        ("projectId not a uuid", {**base, "projectId": "not-a-uuid"}),
+        ("baseUrl without scheme", {**base, "baseUrl": "plane.example"}),
+        ("empty movableStates", {**base, "movableStates": []}),
+        ("empty devBranch", {**base, "devBranch": ""}),
+    ]
+    for name, doc in good:
+        check(validator.is_valid(doc), f"accepts: {name}")
+    for name, doc in bad:
+        check(not validator.is_valid(doc), f"rejects: {name}")
+
+    readme = (PLANE / "README.md").read_text(encoding="utf-8")
+    examples = [b for b in json_blocks(PLANE / "README.md") if '"identifier"' in b]
+    check(bool(examples), "plane-kit README has a config example")
+    for i, block in enumerate(examples, 1):
+        errors = [e.message for e in validator.iter_errors(json.loads(block))]
+        check(not errors, f"README example {i} validates" + (f": {errors[0]}" if errors else ""))
+    check("/plane-sync-ci" in readme and "plugin update" in readme,
+          "README tells users to run /plane-sync-ci after plugin update")
 
 
 def test_prompts():
@@ -484,6 +537,7 @@ def main():
 
     test_manifests(args.tag)
     test_schema()
+    test_plane_schema()
     test_prompts()
     test_git_snippets()
     test_changelog_snippets()
