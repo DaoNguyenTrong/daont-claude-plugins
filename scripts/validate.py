@@ -244,6 +244,31 @@ def test_plane_prompts():
                    "Never set `Done`"):
         check(needle in skill, f"plane-task mentions {needle!r}")
 
+    commands = PLANE / "commands"
+    texts = {}
+    for name in ("plane-init", "plane-sync-ci"):
+        path = commands / f"{name}.md"
+        check(path.is_file(), f"commands/{name}.md exists")
+        if not path.is_file():
+            continue
+        texts[name] = path.read_text(encoding="utf-8")
+        check(texts[name].startswith("---\ndescription:"), f"{name}.md has description frontmatter")
+        for key in re.findall(r"^\| [^|]+ \| `(\w+)` \|", texts[name], flags=re.M):
+            check(key in keys, f"{name}.md config key `{key}` is in the schema")
+    if len(texts) == 2:
+        everything = skill + "".join(texts.values()) + "".join(
+            p.read_text(encoding="utf-8") for p in (PLANE / "templates").rglob("*") if p.is_file() and p.suffix in {".py", ".sh", ".yml"} and "tests" not in p.parts)
+        for key in sorted(keys - {"$schema"}):
+            check(key in everything, f"schema key `{key}` is used by a prompt or template")
+        init, sync = texts["plane-init"], texts["plane-sync-ci"]
+        for needle in ("PLANE_API_KEY", "never print", "stop and ask", "enabledPlugins", "extraKnownMarketplaces",
+                       ".plane-kit/plane_sync.py", ".gitlab/ci/plane.yml", "merge", "core.hooksPath"):
+            check(needle in init, f"plane-init.md mentions {needle!r}")
+        for needle in ("pluginVersion", "diff", "ask before overwriting", "locally modified"):
+            check(needle in sync, f"plane-sync-ci.md mentions {needle!r}")
+    readme = (PLANE / "README.md").read_text(encoding="utf-8")
+    check("## Manual checks" in readme, "plane-kit README lists the manual checks")
+
 
 def test_prompts():
     print("prompts")

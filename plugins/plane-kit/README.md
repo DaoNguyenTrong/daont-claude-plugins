@@ -48,3 +48,11 @@ After every `claude plugin update`, run `/plane-sync-ci` to refresh the files ve
 | `agentMaySet` | no | Narrows the agent's state policy; `Done` is never allowed. |
 | `language` | no | Default `vi`. |
 | `branchPattern` | no | Default `{feature,fix,chore}/<identifier-lowercase>-<n>-<slug>`. |
+
+## Manual checks
+
+Run once per host before a release; record results here.
+
+- [ ] `/plane-init` on an empty GitLab repo and on an empty GitHub repo (files written, markers present, settings merged, no key printed).
+- [ ] `/plane-sync-ci` when the vendored files are older than the plugin (diff shown, only agreed files written; a hand-edited file at the same version is flagged as locally modified).
+- [ ] A real MR/PR with and without a work item id: link and comment posted once, re-run adds nothing, no id logs and exits 0.
