@@ -35,6 +35,7 @@ Take the plugin version from `.claude-plugin/plugin.json` (`pluginVersion`). Ren
 | `plane_sync.py` | `.plane-kit/plane_sync.py` | always |
 | `commit-msg-refs.sh` | `.plane-kit/commit-msg-refs.sh` | always |
 | `gitlab/plane.yml` | `.gitlab/ci/plane.yml` | `host` is `gitlab` |
+| `github/plane-sync.yml` | `.github/workflows/plane-sync.yml` | `host` is `github` |
 
 Never copy `templates/tests/`.
 
@@ -47,6 +48,7 @@ For each target:
 
 Then wire the hooks and CI:
 
+- GitHub: nothing to include; tell the user to add the `PLANE_API_KEY` repository secret (the workflow declares `contents: read` and `pull-requests: read` itself).
 - GitLab: tell the user to add `include: - local: .gitlab/ci/plane.yml` to `.gitlab-ci.yml`, and to give the job the `stage:` and `tags:` their runners need. Do not edit `.gitlab-ci.yml` unasked.
 - Commit hook: if `lefthook.yml` exists, show the rendered `lefthook-refs.yml` block and merge it into `commit-msg` after the user agrees (keep its `priority: 1` so the hook runs before message linters). Otherwise write `.plane-kit/commit-msg-refs.sh` also as `.githooks/commit-msg` (same marker rule) and tell the user to run `git config core.hooksPath .githooks`.
 

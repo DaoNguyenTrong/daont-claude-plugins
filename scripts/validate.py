@@ -193,7 +193,8 @@ PLANE_SAMPLE = {"identifier": "ACME", "projectId": "54c5b126-c344-42ef-a1db-82b2
                 "baseUrl": "https://plane.example", "host": "gitlab", "devBranch": "dev",
                 "readyState": "Ready For Testing", "movableStates": "Backlog,Todo,In Progress",
                 "pluginVersion": "0.1.0"}
-PLANE_VENDORED = ["plane_sync.py", "commit-msg-refs.sh", "gitlab/plane.yml", "lefthook-refs.yml"]
+PLANE_VENDORED = ["plane_sync.py", "commit-msg-refs.sh", "gitlab/plane.yml", "github/plane-sync.yml",
+                 "lefthook-refs.yml"]
 
 
 def test_plane_templates():
@@ -220,6 +221,23 @@ def test_plane_templates():
         text = gitlab.read_text(encoding="utf-8")
         for needle in ("needs: []", "allow_failure: true", 'GIT_DEPTH: "0"', "plane-sync:", ".plane-kit/plane_sync.py"):
             check(needle in text, f"gitlab/plane.yml contains {needle!r}")
+
+
+def test_plane_github_template():
+    print("plane-kit github template")
+    path = PLANE / "templates" / "github" / "plane-sync.yml"
+    if not path.is_file():
+        check(False, "templates/github/plane-sync.yml exists")
+        return
+    text = path.read_text(encoding="utf-8")
+    for needle in ("permissions:", "contents: read", "pull-requests: read", "fetch-depth: 0", "pull_request:",
+                   '"v*"', "GITHUB_TOKEN", "secrets.PLANE_API_KEY", "env.PLANE_API_KEY != ''", ".plane-kit/plane_sync.py",
+                   "continue-on-error: true"):
+        check(needle in text, f"github/plane-sync.yml contains {needle!r}")
+    for name in ("plane-init", "plane-sync-ci"):
+        command = (PLANE / "commands" / f"{name}.md").read_text(encoding="utf-8")
+        check(".github/workflows/plane-sync.yml" in command, f"{name}.md handles the GitHub workflow")
+        check("not supported" not in command, f"{name}.md no longer says GitHub is unsupported")
 
 
 def test_template_unittests():
@@ -622,6 +640,7 @@ def main():
     test_plane_schema()
     test_plane_prompts()
     test_plane_templates()
+    test_plane_github_template()
     test_template_unittests()
     test_prompts()
     test_git_snippets()

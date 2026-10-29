@@ -9,7 +9,7 @@ claude plugin marketplace add DaoNguyenTrong/daont-claude-plugins
 claude plugin install plane-kit@daont-claude-plugins
 ```
 
-Then run `/plane-init` in the project and set the `PLANE_API_KEY` CI variable (masked/protected, never committed).
+Then run `/plane-init` in the project and set `PLANE_API_KEY` (a masked CI variable on GitLab, a repository secret on GitHub; never committed).
 
 After every `claude plugin update`, run `/plane-sync-ci` to refresh the files vendored into the repo.
 
